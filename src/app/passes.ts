@@ -8,6 +8,8 @@ export interface PassesHost {
   readonly effects: Pick<Effects, 'kick' | 'idle'>
   readonly health: HealthEntry
   readonly lifetime: AbortSignal
+  /** Called before a candidate from a person reaches the main Session, whose turn then answers that person. */
+  candidateFromPerson(): void
   configured(): boolean
   closing(): boolean
 }
@@ -34,7 +36,11 @@ export class Passes {
   receive(trigger: Trigger): ReceiveResult {
     if (this.host.closing()) throw new Error('Orchestrator is stopping')
     const result = this.host.engine.receive(trigger)
-    if (result === 'stored') this.request()
+    if (result === 'stored') {
+      // The main Session's next turn answers this message, so only it may promise that person an answer.
+      if (trigger.human) this.host.candidateFromPerson()
+      this.request()
+    }
     return result
   }
   request(): void {

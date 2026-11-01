@@ -70,7 +70,7 @@ export interface ExecutorHost {
   readonly machine: Pick<Machine, 'stateDir'>
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
-  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
+  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds' | 'turnStarted' | 'turnAnswered'>
   closing(): boolean
   /** Whether processing is paused, which holds launches and input deliveries. */
   paused(): boolean
@@ -478,7 +478,13 @@ export class DshExecutor implements Executor {
     const ctx = this.host.context
     this.disposers.push(ctx.on('agent/status', ({ agent, status }) => {
       // A turn that starts ends the look at its worker's background work; the turn's own idle looks afresh.
-      if (status === 'running') { this.settling.get(ticketOfSession(agent.id) ?? '')?.abort(); return }
+      if (status === 'running') {
+        const started = ticketOfSession(agent.id)
+        this.settling.get(started ?? '')?.abort()
+        // A worker turn that may take an hour asks the main Session for its state then, unless it reports something a person can use.
+        if (started !== undefined && !this.host.closing()) this.host.sessions.turnStarted(started)
+        return
+      }
       // The turn a stop of the worker's subagents woke and cancelled is no turn of the worker's.
       if (status !== 'idle' || cancelled.delete(agent) || this.host.closing()) return
       const ticket = this.ticketOf(agent)

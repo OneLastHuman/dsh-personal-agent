@@ -19,6 +19,8 @@ export interface EffectPayloads {
   relay: { text: string }
   /** Inject a notice into the main Session without waking it; the key names what it reports, such as `prompts`. */
   notice: { value: Record<string, unknown>; summary: string }
+  /** Inject a one-off notice, never coalesced with another; the key names the turn that may still keep it true, such as a promise to a person. */
+  promise: { value: Record<string, unknown>; summary: string }
   /** Send a message for a Channel through its Source; the key is the message ID, whose receipt the Outbox keeps. */
   reply: Record<string, never>
 }

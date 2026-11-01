@@ -19,6 +19,7 @@ export const USER_ERRORS = {
   followedThread: ['refused', 'This thread is the ticket\'s own, such as its pull request\'s; it stays subscribed'],
   notFollowing: ['refused', 'This ticket does not follow that thread'],
   questionWithResult: ['refused', 'A question for a person cannot also be a ready result or an answer; report it separately'],
+  evidenceWithoutProgress: ['refused', 'Only a progress report carries evidence; a result, blocker or end reports itself'],
   askerWithoutQuestion: ['refused', 'The message that raised a question needs the question it raised'],
   notAsker: ['refused', 'A question must name the person\'s message that raised it, which reached this ticket'],
   notAnswerable: ['refused', 'An answer must name the person\'s question it answers, which reached this ticket'],

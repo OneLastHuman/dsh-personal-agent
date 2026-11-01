@@ -13,7 +13,7 @@ import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
   readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
-  readonly sessions: Pick<Sessions, 'relay' | 'notify'>
+  readonly sessions: Pick<Sessions, 'relay' | 'notify' | 'turnAnswered'>
   readonly resources: ResourceHost
   /** GitHub Source context whose pull-request rules govern claiming a reported PR. */
   readonly github: SourceContext
@@ -77,6 +77,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
       schema: z.object({
         state: z.enum(['progress', 'ready', 'blocked', 'failed', 'dropped']),
         summary: z.string().min(1),
+        evidence: z.string().trim().min(1).max(500).optional().describe('Only with progress: what proves it, such as a file, path, link or command output the work section asks for; without it the report stays internal.'),
         human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
@@ -86,16 +87,21 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal) : undefined
+        // The progress report a relay tells the person of, with the time the core gives it.
+        const progress = args.state === 'progress' ? { at: new Date().toISOString(), summary: args.summary, evidence: args.evidence } : undefined
         // Claim the PR, record the report, and queue the relay atomically so a rejected PR claim or invalid report leaves no partial state, and a recorded report always reaches the main Session.
         return host.store.atomic(() => {
           const refused = pull && claimPull(host.github, ticketId, pull)
           if (refused) throw new Error(refused)
-          const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
+          const report = { state: args.state, summary: args.summary, ...(args.evidence ? { evidence: args.evidence } : {}),
+            ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }
           const updated = host.engine.report(ticketId, report)
-          const relay = reportRelay(updated, report)
+          const relay = reportRelay(updated, report) ?? (progress ? reportRelay(updated, { ...progress, state: 'progress' }) : undefined)
           if (relay) host.sessions.relay(relay.id, relay.text)
+          // A report a person can use, or a question for one, ends the hour this turn may stay silent for; a progress keeps it.
+          if (args.state !== 'progress') host.sessions.turnAnswered(ticketId)
           const notification = relay ? 'orchestrator' : 'internal_only'
           return { reported: true, notification, ...(updated.attention ? { attention: updated.attention } : {}) }
         })

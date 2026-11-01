@@ -17,6 +17,8 @@ export interface WorkerReport {
   askedBy?: string
   /** The person's question this report answers, which the worker thereby takes up; authorizes the main Session to send an answer reply. */
   answers?: string
+  /** The verifiable progress a `progress` report may carry: files, paths, links or command output, which the main Session may report in one sentence. */
+  evidence?: string
 }
 const RECOVERY_NOTE = 'The host restarted during this ticket. Inspect the current worktree, git history and GitHub state before continuing. Do not repeat an already completed external operation. Finish the original assignment and report its status.'
 
@@ -100,6 +102,7 @@ export class Assignments extends EnginePart {
     const ticket = this.require(ticketId)
     if (!liveTicket(ticket)) throw new UserError('ticketEnded')
     if (report.question && (report.state === 'ready' || report.answers)) throw new UserError('questionWithResult')
+    if (report.evidence !== undefined && report.state !== 'progress') throw new UserError('evidenceWithoutProgress')
     if (report.askedBy && !report.question) throw new UserError('askerWithoutQuestion')
     const person = (id: string, channel: boolean) => {
       const trigger = this.repo.triggers.get(id)
@@ -119,7 +122,7 @@ export class Assignments extends EnginePart {
     else delete ticket.attention
     // A replaced or cleared attention question withdraws any pending unsent reply for the previous question from the outbox.
     if (previous && previous.id !== attention?.id) this.replies.withdrawAttention(previous.id)
-    assignment.report = { state: report.state, summary: report.summary, at }
+    assignment.report = { state: report.state, summary: report.summary, at, ...(report.evidence ? { evidence: report.evidence } : {}) }
     ticket.updatedAt = at
     if (report.answers && !ticket.answers?.includes(report.answers)) ticket.answers = [...ticket.answers ?? [], report.answers]
     if (report.answers) this.takeUp(ticketId, report.answers)

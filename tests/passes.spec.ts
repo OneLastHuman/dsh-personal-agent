@@ -8,8 +8,9 @@ function passes(closing = () => false) {
   const health = new HealthBoard().claim('runtime', { state: 'starting', detail: '' })
   const engine = { receive: vi.fn(() => 'stored' as const), evaluateDue: vi.fn() }
   const effects = { kick: vi.fn(), idle: vi.fn(async () => {}) }
-  const value = new Passes({ engine, effects, health, lifetime: new AbortController().signal, configured: () => true, closing })
-  return { passes: value, engine, effects, health }
+  const candidateFromPerson = vi.fn()
+  const value = new Passes({ engine, effects, health, lifetime: new AbortController().signal, configured: () => true, closing, candidateFromPerson })
+  return { passes: value, engine, effects, health, candidateFromPerson }
 }
 const trigger = { id: 't1', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_1' }], actor: { source: 'feishu', id: 'ou_a' }, human: true,
   at: '2026-10-01T00:00:00.000Z', text: 'hi', meta: {} } as Trigger

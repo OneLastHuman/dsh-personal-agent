@@ -4,6 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import { randomUUID } from 'node:crypto'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, type Ticket } from '../core/index.ts'
@@ -15,22 +16,25 @@ import type { Variable } from './execution-environment.ts'
 import { RetryHealth } from './retry-health.ts'
 import { initializeRoleModel } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
+import { KV } from '../kv.ts'
+import { PROMISE_MS, promiseNotice, quietProgressRelay } from './notices.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
-import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
 
 /** Host dependencies used by `Sessions`. */
 export interface SessionsHost {
   /** DSH Cordis context: sessions, agents, persistence, and their events. */
   readonly context: Context
-  readonly store: Pick<Store, 'tickets' | 'settings' | 'get' | 'set' | 'keys'>
+  readonly store: Pick<Store, 'tickets' | 'settings' | 'get' | 'set' | 'keys' | 'delete'>
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'compose' | 'skills'>
-  readonly effects: Pick<Effects, 'enqueue' | 'handle' | 'idle' | 'pending'>
+  readonly effects: Pick<Effects, 'enqueue' | 'handle' | 'idle' | 'pending' | 'cancel'>
   /** The `models` health entry, which reports managed sessions waiting on a model-budget retry. */
   readonly health: HealthEntry
   readonly masterId: string
   readonly lifetime: AbortSignal
+  /** Schedules a pass so work a Session queues, such as a notice, is carried out without waiting for the next one. */
+  requestPass(): void
   closing(): boolean
   /** Execution environment variables for `ticket`, rendered into its worker's system prompt. */
   environment(ticket: Ticket): Variable[]
@@ -96,6 +100,12 @@ export class Sessions {
   private readonly bindings = new Map<Agent, SessionBinding>()
   private readonly retryHealth = new RetryHealth()
   private readonly ctx: Context
+  /** Progress checks scheduled by ticket, each replaced when its turn reports, starts another turn or the ticket ends. */
+  private readonly progressChecks = new Map<string, ReturnType<typeof setTimeout>>()
+  /** When the person's newest candidate reached the main Session, which opens the one window its accept may promise in. */
+  private candidateAt?: string
+  /** The one-off record of that promise, which a later candidate, reply or turn withdraws. */
+  private promiseFrom?: string
   /** Registers ordered `relay` and `notice` effect handlers that deliver to the main Session. */
   constructor(private readonly host: SessionsHost) {
     this.ctx = host.context
@@ -103,6 +113,7 @@ export class Sessions {
     // Deliver relays and notices to the main Session in the order they were queued.
     host.effects.handle('relay', ({ text }, requestId) => this.prompt(host.masterId, requestId, text, 'steer'), { ordered: true })
     host.effects.handle('notice', ({ value, summary }, name) => this.inject(name, value, summary), { ordered: true })
+    host.effects.handle('promise', ({ value, summary }, name) => this.inject(name, value, summary))
   }
   /** Subscribes to host agent and session events so newly created sessions are decorated and model-budget retries are reflected in health. Call once at startup. */
   install(): void {
@@ -348,5 +359,67 @@ export class Sessions {
     }
   }
   /** Releases prompt sections, skills, and tools registered by `Sessions` across all decorated agents. */
-  dispose(): void { for (const agent of [...this.bindings.keys()]) this.release(agent) }
+  /**
+   * Records that a worker's turn began for `ticketId`, so an hour without a report the person can use makes the main Session ask
+   * for the worker's state; a newer turn, a report or the ticket's end replaces the record.
+   */
+  turnStarted(ticketId: string): void {
+    this.host.store.set(KV.progress.quiet(ticketId), { at: new Date().toISOString(), nonce: randomUUID() })
+    this.armProgressCheck(ticketId)
+  }
+  /** The ticket whose turn reported a result, a question or an end, which no longer leaves a person without an answer. */
+  turnAnswered(ticketId: string): void {
+    this.host.store.delete(KV.progress.quiet(ticketId))
+    this.disarmProgressCheck(ticketId)
+  }
+  /** Schedules the check for `ticketId`'s turn at the hour, replacing an earlier schedule; a check that finds the record replaced does nothing. */
+  private armProgressCheck(ticketId: string): void {
+    this.disarmProgressCheck(ticketId)
+    const since = this.host.store.get(KV.progress.quiet(ticketId))
+    if (!since || this.host.closing()) return
+    const timer = setTimeout(() => {
+      this.progressChecks.delete(ticketId)
+      const ticket = this.host.store.tickets.get(ticketId)
+      if (!ticket || this.host.closing()) return
+      const relay = quietProgressRelay(ticket, `${ticketId}:${ticket.updatedAt}`, new Date().toISOString())
+      if (relay) this.relay(relay.id, relay.text)
+    }, Math.max(0, Date.parse(since.at) + 60 * 60_000 - Date.now()))
+    timer.unref?.()
+    this.progressChecks.set(ticketId, timer)
+  }
+  private disarmProgressCheck(ticketId: string): void {
+    const timer = this.progressChecks.get(ticketId)
+    if (timer) clearTimeout(timer)
+    this.progressChecks.delete(ticketId)
+  }
+  /** Called when a candidate from a person reaches the main Session, which opens the window its accept may promise in. */
+  expectCandidateTurn(): void {
+    this.candidateAt = new Date().toISOString()
+    this.withdrawPromise()
+  }
+  /**
+   * Offers the one promise of the turn that answers a person: the ticket that turn started may still be told the work has
+   * started, and any other candidate of the turn, such as an answer that starts no work, withdraws the offer.
+   */
+  offerPromise(ticketId: string): void {
+    // Only the newest candidate's accept may promise; an answer to an older one, or one after the window, gets nothing.
+    const at = this.candidateAt
+    if (!at || Date.now() - Date.parse(at) > PROMISE_MS) return
+    const notice = promiseNotice(this.host.store.tickets.get(ticketId), at)
+    if (!notice) return
+    this.promiseFrom = notice[0]
+    // A one-off record, withdrawn with the notice, so a promise never outlives the turn that made it.
+    this.host.effects.enqueue('promise', notice[0], { value: notice[1], summary: notice[2] })
+    this.host.requestPass()
+  }
+  /** Withdraws the turn's promise, which a later candidate, a reply or another turn makes untrue. */
+  withdrawPromise(): void {
+    const from = this.promiseFrom
+    delete this.promiseFrom
+    if (from) this.host.effects.cancel('promise', from)
+  }
+  dispose(): void {
+    for (const agent of [...this.bindings.keys()]) this.release(agent)
+    for (const ticketId of [...this.progressChecks.keys()]) this.disarmProgressCheck(ticketId)
+  }
 }

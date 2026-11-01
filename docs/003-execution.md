@@ -28,6 +28,14 @@ Executor Sessions run commands without approval as the operator's OS user. Their
 
 The main Session uses `dsh-superagent-router`, with the same 5-second shell and job-wait limits and a smaller tool set for routing. Sessions retain the preset selected at creation. Worker subagents use DeepSeek Harness's `standard` preset.
 
+### Progress a person can use
+
+A worker reports `progress` with `evidence`, such as a file, a path, a link or command output, when the work has advanced enough for a person to check it. The main Session receives it as a `worker_progress` relay and tells the person in one sentence. A `progress` report without evidence stays on the Ticket as an internal update and reaches no Session, and a report of any other state cannot carry evidence.
+
+A worker turn that takes more than an hour without reporting a result, a question or an end makes the main Session receive a `progress_check` once for that turn: it asks the worker for its status with `orchestrator_ticket_request_status` and tells the person where the work stands. A newer turn, a report or the Ticket's end replaces the record the check was scheduled for.
+
+A main Session turn that answers a message a person sent, and starts a Ticket for it, receives one notice that says the person now waits for the outcome: it may send one sentence saying the work has started. Another candidate, another word to that person, or three minutes without either withdraws the notice, so a promise is only possible for a turn that still answers that person.
+
 ### Background work and worker slots
 
 When a turn ends with shell jobs or subagents still running, the Ticket keeps its worker slot and stays working. It is not reported as waiting, and the main Session receives no waiting report. A completed job or subagent wakes the Executor with its result in the same slot. Once a turn ends with no background work, the Executor reports waiting normally.

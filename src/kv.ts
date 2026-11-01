@@ -33,6 +33,8 @@ export const KV = {
   runtime: { masterId: record<string>('master-id') },
   /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
   sessions: { prompts: family<number[], [session: string]>('session-prompts:') },
+  /** Executor progress: a worker turn with no reply for a person yet, by ticket, as its start and a nonce that a later turn, report or end replaces. */
+  progress: { quiet: family<{ at: string; nonce: string }, [ticket: string]>('progress-quiet:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

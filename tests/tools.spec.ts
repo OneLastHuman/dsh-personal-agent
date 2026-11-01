@@ -434,7 +434,9 @@ it('tells the main Session of the settings, prompts, requeues and unsubscription
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_trigger_requeue', { trigger_id: thanks.id })).toEqual({ queued: true })
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_thread_unsubscribe', { thread: `feishu:${CHAT}:om_1` })).toEqual({ removed: true, thread: `feishu:${CHAT}:om_1` })
   await h.runtime.idle()
-  expect(notices().slice(before).filter(notice => !('ticket_ended' in notice))).toEqual([])
+  // A ticket that started on a person's message may still offer one sentence saying the work has started, which may reach the
+  // main Session as a notice; no other notice, and never one about the main Session's own change, is delivered.
+  expect(notices().slice(before).filter(notice => !('ticket_ended' in notice) && !('promise' in notice))).toEqual([])
 })
 
 it('answers a policy sync with the counts and what changed, not the whole list', async () => {

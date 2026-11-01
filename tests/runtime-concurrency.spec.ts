@@ -933,6 +933,11 @@ describe('the Executor\'s parts', () => {
     const ticket = { id: 't1', title: 'Fix', updatedAt: '2026-09-01T00:00:00Z', attention: { id: 'a1', question: 'Which color?' }, assignments: [],
       mandate: { strength: 'explicit' }, origin: { triggerId: 'tr1' } } as unknown as Ticket
     expect(reportRelay(ticket, { state: 'progress', summary: 'halfway' })).toBeUndefined()
+    // Only progress a person can check reaches the main Session; the rest stays on the ticket.
+    const progress = reportRelay({ ...ticket, attention: undefined } as unknown as Ticket,
+      { state: 'progress', at: '2026-09-01T00:10:00Z', summary: 'halfway', evidence: 'src/app/notices.ts:120' })!
+    expect(JSON.parse(progress.text)).toMatchObject({ kind: 'worker_progress', at: '2026-09-01T00:10:00Z', ticket: { ticket_id: 't1' }, trigger_id: 'tr1',
+      summary: 'halfway', evidence: 'src/app/notices.ts:120' })
     expect(reportRelay(ticket, { state: 'blocked', summary: 'need input', question: 'Which color?' }))
       .toMatchObject({ id: 'attention:t1:a1', text: expect.stringContaining('"kind":"worker_attention"') })
     const ready = reportRelay({ ...ticket, attention: undefined } as unknown as Ticket, { state: 'ready', summary: 'Done',
