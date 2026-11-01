@@ -113,6 +113,11 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
       return { ...fromDecision(decision), triggerIds: decision.triggerIds }
     }
     case 'ignore': {
+      // A direct message from a person must never end without an answer: answer it, attach it to the ticket it continues, or accept it.
+      const direct = host.store.triggers.get(item.trigger_id)
+      if (direct?.addressed === 'direct' && direct.human) {
+        return { refused: 'A direct message from a person must get a reply: use orchestrator_reply with purpose=answer and this trigger_id for a message that needs no repository work, attach it to the ticket it continues, or accept it as a ticket. Do not ignore it.' }
+      }
       const decision = host.engine.decide(item.trigger_id, { kind: 'ignore', reason: item.reason! })
       return { ...fromDecision(decision), triggerIds: decision.triggerIds }
     }
