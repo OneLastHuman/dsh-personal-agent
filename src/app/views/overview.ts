@@ -84,7 +84,6 @@ function endedSince(store: Store, since: string): Ticket[] {
 }
 /** How many Tickets each station holds and how many of them wait for a person, in station order. */
 export function workStations(view: Snapshot, open: Ticket[], ended: Ticket[]) {
-  const rows = (tickets: Ticket[]) => tickets.map(ticket => ticketLine(view, ticket))
   const stations = WORK_STATIONS.map(station => ({ station, tickets: [] as ReturnType<typeof ticketLine>[], waiting: 0 }))
   const byStation = new Map(stations.map(item => [item.station, item]))
   for (const ticket of open) {
@@ -93,9 +92,9 @@ export function workStations(view: Snapshot, open: Ticket[], ended: Ticket[]) {
     entry.tickets.push(ticketLine(view, ticket))
     if (waitsAtStation(stage)) entry.waiting += 1
   }
-  // An ended Ticket only fills the last station, newest first and capped so the flow never outgrows one screen.
+  // Only the last day's ended Tickets fill the last station, and none of them waits for a person any more.
   const done = byStation.get('ended')!
-  done.tickets = rows(ended)
+  done.tickets = ended.map(ticket => ticketLine(view, ticket))
   done.waiting = 0
   return { stations, ended: ended.length }
 }
