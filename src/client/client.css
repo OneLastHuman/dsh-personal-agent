@@ -380,3 +380,41 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-admission-slot { display: inline-flex; flex: none; width: 16px; }
 .dt-info-warn { color: var(--dsw-alias-state-warn-primary); }
 .dt-field-segmented { max-width: 240px; }
+/* The flow: one row per station, each holding the Tickets that rest in it. */
+.dt-flow-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.dt-flow-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) max-content; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
+.dt-flow-row:last-child { border-bottom: 0; }
+.dt-flow-label { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.dt-flow-label .dt-dot { margin-top: 0; }
+.dt-flow-body { min-width: 0; display: flex; align-items: center; }
+.dt-flow-tokens { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.dt-flow-empty { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }
+.dt-flow-detail { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; text-align: right; }
+.dt-token { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 26px; padding: 2px 9px; border-radius: 7px; border: 0.5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1, transparent); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; text-align: left; }
+.dt-token:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dt-token:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-token .dt-dot { margin-top: 0; }
+.dt-token-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-token[data-state='warning'] { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); }
+.dt-token[data-state='error'] { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
+.dt-token[data-state='ongoing'] { border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent); }
+.dt-token[data-state='done'] { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, transparent); }
+.dt-token[data-state='idle'] { color: var(--dsw-alias-label-secondary); opacity: .72; }
+@container (max-width: 520px) {
+  .dt-flow-row { grid-template-columns: 64px minmax(0, 1fr); }
+  .dt-flow-detail { grid-column: 2; text-align: left; }
+}
+/* Where a Ticket's time went: one bar split between work and waiting, with the two spans named below it. */
+.dt-timing { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }
+.dt-timing-title { font-weight: 500; color: var(--dsw-alias-label-secondary); }
+.dt-timing-bar { flex: 1 1 120px; min-width: 80px; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); display: flex; }
+.dt-timing-working { display: block; height: 100%; background: var(--dsw-alias-state-business-primary); }
+.dt-timing-part { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.dt-timing-key { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.dt-timing-key[data-part='working'] { background: var(--dsw-alias-state-business-primary); }
+.dt-timing-key[data-part='waiting'] { background: var(--dsw-alias-state-warn-primary); }
+.dt-timing-since { margin-left: auto; }
+/* The route a Trigger took, in the order the rules applied it. */
+.dt-trail { list-style: none; margin: 0; padding: 0 0 0 10px; display: flex; flex-direction: column; gap: 2px; border-left: 1.5px solid var(--dsw-alias-border-l3); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }
+.dt-trail-step { position: relative; }
+.dt-trail-step::before { content: ""; position: absolute; left: -14px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--dsw-alias-border-l4); }

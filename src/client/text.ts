@@ -61,3 +61,14 @@ export function fullTime(value: string | undefined, lang: string): string {
   const date = new Date(value ?? '')
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(timeLocale(lang))
 }
+
+/** A span of milliseconds as one short duration, in the interface's units: minutes under an hour, then hours and minutes. */
+export function duration(ms: number, lang: string): string {
+  const chinese = lang === 'zh'
+  const total = Math.max(0, Math.round(ms / 60_000))
+  if (total < 1) return chinese ? '不到 1 分钟' : 'under a minute'
+  const hours = Math.floor(total / 60), minutes = total % 60
+  if (!hours) return chinese ? `${minutes} 分钟` : `${minutes} min`
+  if (!minutes) return chinese ? `${hours} 小时` : `${hours} h`
+  return chinese ? `${hours} 小时 ${minutes} 分` : `${hours} h ${minutes} min`
+}

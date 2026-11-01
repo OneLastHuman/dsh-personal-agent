@@ -3,14 +3,14 @@
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, text } from './fixtures/panel.tsx'
-import { server, droppedReply, threadSummary } from './fixtures/panel-server.ts'
+import { server, droppedReply, threadSummary, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
-it('leads the overview with the pending Tickets, then problems, the last day and the Executor, each linking to its stage', async () => {
+it('leads the overview with the flow, then the pending Tickets, problems, the last day and the Executor, each linking to its stage', async () => {
   await mount()
   expect(tab(zh['tab.overview']).getAttribute('aria-selected')).toBe('true')
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '来源', '触发', '评估', '执行', '设置'])
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['流程', '待处理工单2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败'])
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
   // Actions sit below the title and Threads, apart from the stage, each with its icon.
@@ -125,7 +125,7 @@ it('words a refused retry in the interface language by its code', async () => {
 
 it('shows the overview in English', async () => {
   await mount(en)
-  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.problems}2`,
+  expect(all('.dt-section-title').map(title => title.textContent)).toEqual([en.flowTitle, `${en.pendingTickets}2`, `${en.problems}2`,
     `${en.lastDay}${en.details}`, `${en['term.executor']}${en.details}`])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual([en['stage.answer'], en['stage.failed']])
   expect(all('.dt-stat-label').map(label => label.textContent)).toEqual([en.flowReceivedLabel, en.flowFilteredLabel, en.flowJudgedLabel,
@@ -156,4 +156,54 @@ it('says when no Source is on, an Eval is past its deadline or a message keeps f
   await click(tab(zh['tab.overview']))
   await click('评估超时未决定：#9 迟迟未决')
   expect(server.requests.some(request => request.path.startsWith('threads/github:9'))).toBe(true)
+})
+
+it('rests each Ticket in the station its stage belongs to, and names who has to move it', async () => {
+  server.tickets.open = [
+    ticketSummary({ id: 'e1', title: '正在跑的执行' }, { stage: 'working' }),
+    ticketSummary({ id: 'e2', title: '排队的执行' }, { stage: 'working', action: 'queued' }),
+    ticketSummary({ id: 'e3', title: '等回答的执行' }, { stage: 'person', action: 'answer' }),
+    ticketSummary({ id: 'e4', title: '报告失败的执行' }, { stage: 'person', action: 'failed' }),
+    ticketSummary({ id: 'e5', title: '等验收的交付' }, { stage: 'person', action: 'review' }),
+    ticketSummary({ id: 'e6', title: '空闲等待' }, { stage: 'idle' }),
+  ]
+  server.tickets.ended = [ticketSummary({ id: 'x1', title: '已合并' }, { stage: 'ended' })]
+  await mount()
+  const rows = () => all('.dt-flow-row')
+  // The lead-in rows summarise Triggers and Evals, which hold no Ticket of their own.
+  expect(rows().map(row => row.dataset.station)).toEqual(['intake', 'eval', 'exec', 'deliver', 'ended'])
+  expect(rows().map(row => row.querySelector('.dt-flow-label')?.textContent)).toEqual(['来信', '评估', '执行', '交付', '结束'])
+  // A ready report is delivery, not execution; everything a person must move stays in the station it is in.
+  expect(all('.dt-flow-row[data-station="exec"] .dt-token-name').map(name => name.textContent))
+    .toEqual(['正在跑的执行', '排队的执行', '等回答的执行', '报告失败的执行', '空闲等待'])
+  expect(all('.dt-flow-row[data-station="deliver"] .dt-token-name').map(name => name.textContent)).toEqual(['等验收的交付'])
+  expect(all('.dt-flow-row[data-station="ended"] .dt-token-name').map(name => name.textContent)).toEqual(['已合并'])
+  // The count on the heading is the number of Tickets in the flow that wait for a person, and no other.
+  expect(document.querySelector('.dt-section-title .dt-count')?.textContent).toBe('3 条等你')
+  expect(all('.dt-flow-row[data-station="deliver"] .dt-flow-detail').map(detail => detail.textContent)).toEqual(['1 条等你'])
+})
+
+it('opens a Ticket from the station it rests in, without a new route', async () => {
+  server.tickets.open = [ticketSummary({ id: 't9', title: '点开我' }, { stage: 'working' })]
+  await mount()
+  await click(all('.dt-flow-row[data-station="exec"] .dt-token')[0]!)
+  expect(server.requests.some(request => request.path === 'tickets/t9')).toBe(true)
+  expect(tab(zh['tab.execution']).getAttribute('aria-selected')).toBe('true')
+})
+
+it('says so when a station holds nothing, rather than leaving the row blank', async () => {
+  server.tickets.open = [ticketSummary({ id: 'o1' }, { stage: 'working' })]
+  server.tickets.ended = []
+  await mount()
+  expect(all('.dt-flow-row[data-station="deliver"] .dt-flow-empty').map(item => item.textContent)).toEqual(['没有工单停在这里'])
+  expect(all('.dt-flow-row[data-station="ended"] .dt-flow-empty').map(item => item.textContent)).toEqual(['没有工单停在这里'])
+  // The lead-in rows carry no Tickets, so they show what they summarise instead of the empty-station wording.
+  expect(all('.dt-flow-row[data-station="intake"] .dt-flow-empty').map(item => item.textContent)).toEqual(['收到 12，筛掉 2'])
+})
+
+it('omits the waiting count from the flow heading when nothing waits for a person', async () => {
+  server.tickets.open = [ticketSummary({ id: 'w1' }, { stage: 'working' })]
+  server.tickets.ended = []
+  await mount()
+  expect(document.querySelector('.dt-flow .dt-section-title .dt-count')).toBeNull()
 })

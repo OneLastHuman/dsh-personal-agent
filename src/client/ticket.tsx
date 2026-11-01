@@ -6,7 +6,7 @@ import { decisionMark, reportDot, ticketMark } from './marks.ts'
 import { usePanel } from './provider.tsx'
 import { settingsRoute } from './route.ts'
 import { Earlier, ThreadLine, automatedRuns } from './rows.tsx'
-import { actorName, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
+import { actorName, duration, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
 import { ActionLink, ConfirmButton, ExternalLink, Hint, KeyValues, LabelValue, LoadState, MarkdownLite, PageHead, Section, SessionButton,
   StageMark, When } from './widgets.tsx'
 
@@ -141,6 +141,7 @@ export function TicketPage({ id }: { id: string }) {
       <LabelValue label={t('ticketUpdatedLabel')} value={when(data.updatedAt, t('lang'))} />
     </div>
     {ended && <Hint>{ended}</Hint>}
+    <TicketTiming timing={data.timing} />
     {data.attention && <div className="dt-banner"><span className="dt-banner-label">{t('attentionPrefix')}</span><MarkdownLite
       text={data.attention.question} />
       {channel && <div className="dt-banner-actions">
@@ -195,4 +196,24 @@ export function TicketPage({ id }: { id: string }) {
         onConfirm={() => after(call('POST tickets/:id/stop', { id }))} />
     </div>}
   </>
+}
+
+/** Where a Ticket's time went: the hours its worker ran and the hours it waited on a person. */
+function TicketTiming({ timing }: { timing: TicketPageView['timing'] }) {
+  const { t } = usePanel()
+  const total = timing.working + timing.waiting
+  // A Ticket with no measurable life yet says nothing rather than showing an empty bar.
+  if (total <= 0) return null
+  const share = Math.round((timing.working / total) * 100)
+  return <div className="dt-timing">
+    <span className="dt-timing-title">{t('ticketTimingLabel')}</span>
+    <div className="dt-timing-bar" role="img" aria-label={t('ticketTimingLabel')}>
+      <span className="dt-timing-working" style={{ width: `${share}%` }} />
+    </div>
+    <span className="dt-timing-part"><span className="dt-timing-key" data-part="working" />{t('ticketWorkingLabel')}
+      {' '}{duration(timing.working, t('lang'))}</span>
+    <span className="dt-timing-part"><span className="dt-timing-key" data-part="waiting" />{t('ticketWaitingLabel')}
+      {' '}{duration(timing.waiting, t('lang'))}</span>
+    <span className="dt-timing-since">{t(timing.ended ? 'ticketTimingEnded' : 'ticketTimingSince')}</span>
+  </div>
 }

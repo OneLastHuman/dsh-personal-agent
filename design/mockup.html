@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>进展面板 · 设计方案</title>
+<style>
+  :root {
+    --page: #eef0f3;
+    --surface: #ffffff;
+    --surface-2: #f7f8fa;
+    --rail: #f3f4f7;
+    --ink: #14161a;
+    --ink-2: #43484f;
+    --ink-3: #7c828c;
+    --ink-4: #a7acb5;
+    --hair: rgba(20, 22, 26, .10);
+    --hair-2: rgba(20, 22, 26, .06);
+    --ok: #22a35a;
+    --ok-bg: #e8f7ee;
+    --run: #2f6bf0;
+    --run-bg: #e9f0ff;
+    --wait: #d98a12;
+    --wait-bg: #fdf3e2;
+    --bad: #d9342b;
+    --bad-bg: #fdecea;
+    --quiet: #8b929c;
+    --quiet-bg: #eef0f3;
+    --brand: #2f6bf0;
+    --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    --r: 14px;
+    --shadow: 0 1px 2px rgba(20, 22, 26, .04), 0 8px 24px -12px rgba(20, 22, 26, .18);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.55 var(--font); -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 40px 32px 96px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--ink-3); letter-spacing: .01em; }
+  h2 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0; }
+  p { margin: 0; }
+
+  /* ── page masthead ───────────────────────────────────────────── */
+  .mast { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; padding-bottom: 28px; border-bottom: 1px solid var(--hair); margin-bottom: 36px; }
+  .mast-lede { max-width: 54ch; color: var(--ink-2); font-size: 14px; }
+  .mast-meta { display: flex; gap: 28px; flex-shrink: 0; }
+  .mast-meta div { display: flex; flex-direction: column; gap: 2px; }
+  .mast-meta dt { font-size: 12px; color: var(--ink-3); }
+  .mast-meta dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ── section headers ─────────────────────────────────────────── */
+  .sec { margin-top: 64px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .sec-no { font: 500 12px/1 var(--mono); color: var(--ink-4); letter-spacing: .04em; }
+  .sec-lede { color: var(--ink-2); max-width: 62ch; margin-bottom: 22px; }
+
+  /* ── the panel device frame ──────────────────────────────────── */
+  .device { border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow); border: 1px solid var(--hair-2); overflow: hidden; }
+  .device-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--surface-2); border-bottom: 1px solid var(--hair-2); color: var(--ink-3); font-size: 12px; }
+  .dot3 { display: flex; gap: 5px; }
+  .dot3 i { width: 9px; height: 9px; border-radius: 50%; background: var(--hair); display: block; }
+  .tabs { display: flex; gap: 2px; padding: 10px 16px 0; background: var(--surface); border-bottom: 1px solid var(--hair-2); }
+  .tab { padding: 7px 12px 9px; font-size: 13px; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 500; }
+  .panel { padding: 20px 22px 24px; background: var(--surface); }
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+
+  /* ── shared atoms ────────────────────────────────────────────── */
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .chip.ok { color: #147a42; background: var(--ok-bg); }
+  .chip.run { color: #1f4fbf; background: var(--run-bg); }
+  .chip.run::before { animation: pulse 1.8s ease-in-out infinite; }
+  .chip.wait { color: #9a6206; background: var(--wait-bg); }
+  .chip.bad { color: #a5261f; background: var(--bad-bg); }
+  .chip.quiet { color: var(--quiet); background: var(--quiet-bg); }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 12px; }
+  .svg-ic { width: 14px; height: 14px; flex: none; }
+
+  /* ── BEFORE: the panel as it is today ────────────────────────── */
+  .before { background: var(--surface-2); }
+  .before .panel { background: var(--surface-2); }
+  .b-section-title { font-size: 13px; font-weight: 600; color: var(--ink-2); display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+  .b-section-title .num { color: var(--ink-4); font-weight: 400; }
+  .b-row { display: flex; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--hair-2); margin-bottom: 6px; }
+  .b-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .b-title { font-weight: 500; font-size: 13.5px; }
+  .b-meta { font-size: 12px; color: var(--ink-3); display: flex; gap: 10px; flex-wrap: wrap; }
+  .b-stats { display: flex; gap: 30px; }
+  .b-stat { display: flex; flex-direction: column; gap: 1px; }
+  .b-stat-label { font-size: 12px; color: var(--ink-3); }
+  .b-stat-value { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .b-hint { font-size: 13px; color: var(--ink-3); }
+  .b-btn { font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--hair); background: var(--surface); color: var(--ink-2); white-space: nowrap; align-self: center; }
+
+  /* ── AFTER: the proposal ─────────────────────────────────────── */
+  .after .panel { padding: 0; }
+  .flowhead { display: flex; align-items: center; gap: 8px; padding: 18px 22px 16px; flex-wrap: wrap; }
+  .flowhead h4 { margin: 0; font-size: 12px; font-weight: 600; color: var(--ink-3); margin-right: 4px; }
+  [data-stage] { cursor: pointer; background: none; border: 1px solid transparent; padding: 0 6px; border-radius: 8px; }
+  [data-stage]:hover { background: rgba(20,22,26,.04); }
+  [data-stage]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .lane { display: grid; grid-template-columns: 104px 1fr 108px; align-items: center; gap: 14px; padding: 11px 22px; border-top: 1px solid var(--hair-2); }
+  .lane:hover { background: rgba(20,22,26,.018); }
+  .lane-label { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
+  .lane-label .swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .lane-stack { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; min-height: 26px; }
+  .tok { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 7px; border-radius: 7px; border: 1px solid; font-size: 12px; font-weight: 500; max-width: 186px; cursor: pointer; }
+  .tok span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tok.done { color: #147a42; background: var(--ok-bg); border-color: #bfe6cd; }
+  .tok.run { color: #1f4fbf; background: var(--run-bg); border-color: #c3d5fb; }
+  .tok.wait { color: #9a6206; background: var(--wait-bg); border-color: #f0d6a8; }
+  .tok.bad { color: #a5261f; background: var(--bad-bg); border-color: #f3c2bd; }
+  .tok.quiet { color: #6d737c; background: var(--surface-2); border-color: var(--hair); }
+  .tok:hover { filter: brightness(.985); box-shadow: 0 0 0 3px rgba(20,22,26,.05); }
+  .tok:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+  .tok.run .spinner { width: 9px; height: 9px; border: 1.6px solid #9dbbf8; border-top-color: #2f6bf0; border-radius: 50%; animation: spin .9s linear infinite; flex: none; }
+  .lane-side { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 12px; color: var(--ink-3); text-align: right; }
+  .empty-slot { font-size: 12px; color: var(--ink-4); }
+
+  .next { border-top: 1px solid var(--hair); padding: 18px 22px 20px; background: var(--surface-2); }
+  .next h4 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+  .need { display: flex; align-items: flex-start; gap: 12px; padding: 11px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--hair-2); margin-bottom: 8px; }
+  .need:last-child { margin-bottom: 0; }
+  .need-icon { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: var(--wait-bg); color: #9a6206; flex: none; margin-top: 1px; }
+  .need-icon.rev { background: var(--run-bg); color: #1f4fbf; }
+  .need-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .need-title { font-weight: 500; font-size: 13.5px; }
+  .need-q { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .need-meta { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 8px; align-items: center; }
+  .ask-user { height: 24px; border-radius: 6px; background: rgba(20,22,26,.06); }
+
+  .problems { border-top: 1px solid var(--hair-2); padding: 14px 22px; display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+  .problems .pm-title { font-weight: 600; color: var(--bad); flex: none; }
+  .problems .pm-body { flex: 1; min-width: 0; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* detail panel (what opening a token shows) */
+  .detail { display: grid; grid-template-columns: 1fr 320px; }
+  .detail-main { padding: 20px 22px 22px; border-right: 1px solid var(--hair-2); }
+  .detail-side { padding: 18px 18px; background: var(--surface-2); display: flex; flex-direction: column; gap: 16px; }
+  .d-title { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; margin-bottom: 4px; }
+  .d-title h5 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; }
+  .d-crumb { font-size: 12px; color: var(--ink-3); margin-bottom: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .d-hero { border-radius: 10px; background: var(--run-bg); border: 1px solid #c9d9fc; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .d-hero-label { font-size: 11.5px; font-weight: 600; color: #1f4fbf; }
+  .d-hero-text { font-size: 13.5px; color: var(--ink); }
+  .d-progress { height: 4px; border-radius: 2px; background: #d5e1fc; overflow: hidden; margin-top: 2px; }
+  .d-progress i { display: block; height: 100%; width: 62%; background: var(--run); border-radius: 2px; }
+  .spark { background: var(--surface); border: 1px solid var(--hair-2); border-radius: 10px; padding: 10px 12px; }
+  .spark .label { font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .spark .big { font-size: 24px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; }
+  .spark .bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; background: var(--hair); margin: 8px 0 5px; }
+  .spark .bar i { display: block; height: 100%; }
+  .legend { display: flex; gap: 10px; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+  .legend b { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
+  .rail3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rail3 .cell { background: var(--surface); border: 1px solid var(--hair-2); border-radius: 9px; padding: 8px 9px; }
+  .rail3 .cell .k { font-size: 11px; color: var(--ink-3); }
+  .rail3 .cell .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rail3 .cell .v em { font-style: normal; font-size: 12px; color: var(--ink-4); font-weight: 500; }
+
+  /* ── the rule strip — the new idea ───────────────────────────── */
+  .rules { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 8px; }
+  .strip { border-radius: var(--r); border: 1px solid var(--hair-2); background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
+  .strip-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 20px 8px; }
+  .strip-head h4 { margin: 0; font-size: 13px; font-weight: 600; }
+  .strip-head .note { font-size: 12px; color: var(--ink-3); }
+  .seg-track { display: flex; height: 30px; margin: 4px 20px 8px; border-radius: 7px; overflow: hidden; gap: 2px; }
+  .seg-track.blocks { height: 34px; }
+  .seg { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.96); white-space: nowrap; overflow: hidden; min-width: 0; }
+  .seg.done { background: #34b06a; }
+  .seg.run { background: #3b78f6; }
+  .seg.wait { background: #e5a12a; }
+  .seg.bad { background: #dd4b41; }
+  .seg.quiet { background: #c3c8d0; color: #3b4048; }
+  .seg.wide { border-radius: 6px; }
+  .dots { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 20px 8px; }
+  .dots .seg { width: 18px; height: 20px; border-radius: 4px; font-size: 9px; }
+  .strip-foot { display: flex; align-items: center; gap: 16px; padding: 2px 20px 13px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+  .strip-foot .seg-dot { display: inline-flex; align-items: center; gap: 5px; }
+  .strip-foot .seg-dot i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .strip-foot .total { margin-left: auto; color: var(--ink-2); font-weight: 500; }
+
+  /* ── palette + type specimens ───────────────────────────────── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--hair-2); border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); }
+  .card h4 { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
+  .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .swatch-card { border: 1px solid var(--hair-2); border-radius: 10px; overflow: hidden; }
+  .swatch-card .blk { height: 46px; }
+  .swatch-card .meta { padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .swatch-card .nm { font-size: 12.5px; font-weight: 600; }
+  .swatch-card .hx { font: 11.5px/1 var(--mono); color: var(--ink-3); }
+  .swatch-card .use { font-size: 11.5px; color: var(--ink-3); }
+  .kvgrid { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; font-size: 13px; }
+  .kvgrid dt { color: var(--ink-3); }
+  .kvgrid dd { margin: 0; }
+  .specimen-row { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--hair-2); }
+  .specimen-row:last-child { border-bottom: 0; }
+  .specimen-row .tag { font: 11.5px/1 var(--mono); color: var(--ink-4); width: 74px; flex: none; }
+  .type-1 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; }
+  .type-2 { font-size: 15px; font-weight: 600; }
+  .type-3 { font-size: 13.5px; }
+  .type-4 { font-size: 12px; color: var(--ink-3); }
+  .type-5 { font: 500 30px/1 var(--mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .type-6 { font: 12px/1 var(--mono); color: var(--ink-3); }
+  .mono-demo { font-family: var(--mono); font-size: 12.5px; }
+
+  /* ── before/after pair ──────────────────────────────────────── */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .pair figure { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .pair figcaption { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 5px; }
+  .badge.before { background: rgba(20,22,26,.07); color: var(--ink-2); }
+  .badge.after { background: var(--run); color: #fff; }
+  .mini { border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface); padding: 12px; }
+
+  /* lifecycle strip */
+  .life { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .life-step { flex: 1 0 132px; border: 1px solid var(--hair-2); border-radius: 11px; padding: 10px 11px; background: var(--surface); display: flex; flex-direction: column; gap: 5px; }
+  .life-step .n { font: 11px/1 var(--mono); color: var(--ink-4); }
+  .life-step .t { font-size: 13px; font-weight: 600; }
+  .life-step .d { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+  .life-step .shot { margin-top: 4px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--hair-2); padding: 7px; font-size: 11px; color: var(--ink-2); }
+
+  ol.moves { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; counter-reset: m; }
+  ol.moves li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 13px; }
+  ol.moves li::before { counter-increment: m; content: counter(m); font: 500 11px/20px var(--mono); color: var(--ink-4); text-align: right; }
+  ol.moves b { font-weight: 600; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .chip.run::before, .tok.run .spinner { animation: none; } }
+  @media (max-width: 900px) {
+    .pair, .grid2 { grid-template-columns: 1fr; }
+    .seg-track .seg { font-size: 10px; }
+    .seg-track .seg .tt { display: none; }
+    .seg-track .seg .tt.short { display: inline; }
+    .detail { grid-template-columns: 1fr; }
+    .detail-main { border-right: 0; border-bottom: 1px solid var(--hair-2); }
+    .lane { grid-template-columns: 84px 1fr; }
+    .lane-side { grid-column: 2; justify-content: flex-start; }
+    .wrap { padding: 24px 16px 64px; }
+    .mast { flex-direction: column; align-items: flex-start; gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.5 8S4 3.8 8 3.8 14.5 8 14.5 8 12 12.2 8 12.2 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8v1.6M8 12.6v1.6M2.6 8H1M15 8h-1.6M3.9 3.9 2.8 2.8M13.2 13.2l-1.1-1.1M12.1 3.9l1.1-1.1M2.8 13.2l1.1-1.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10.2 10.2 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+</svg>
+
+<div class="wrap">
+
+<!-- ════════ MASTHEAD ════════ -->
+<h1>dsh-superagent · 侧边栏 Superagent 面板</h1>
+<header class="mast" style="margin-top:14px">
+  <div>
+    <h2 style="font-size:30px;letter-spacing:-.02em;margin-bottom:10px">项目进展面板</h2>
+    <p class="mast-lede">把「现在整体怎么样」放回第一屏。一条固定的五段流程，每阶段一行，停在那里、需要人动手、还是已经过完，一眼看出来。下面这个页面就是我要交付的方案，数据是示意值，尺寸和颜色按真实令牌取值。</p>
+  </div>
+  <dl class="mast-meta">
+    <div><dt>路由</dt><dd>Overview</dd></div>
+    <div><dt>方案稿</dt><dd>v1</dd></div>
+    <div><dt>决策</dt><dd>5</dd></div>
+  </dl>
+</header>
+
+<!-- ════════ 1 · BEFORE ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">01</span><h3>现在长这样</h3></div>
+  <p class="sec-lede">现有的 Overview 只有四块：待我处理、系统问题、24 小时数字、执行器。能回答「谁等我」，但回答不了「事情走到哪一步了」——后者得自己去 Execution 一页一页翻。</p>
+
+  <div class="device before">
+    <div class="device-bar"><span class="dot3"><i></i><i></i><i></i></span><span>Superagent</span></div>
+    <div class="tabs"><span class="tab on">概览</span><span class="tab">来源</span><span class="tab">对话</span><span class="tab">评估</span><span class="tab">执行</span><span class="tab">设置</span></div>
+    <div class="panel">
+      <div class="stack">
+        <div>
+          <div class="b-section-title">等待你处理 <span class="num">2</span></div>
+          <div class="b-row">
+            <div class="b-row-main">
+              <span class="b-title">给日期单元格加分钟显示</span>
+              <span class="b-meta"><span>等你确认</span><span>已交付 PR #128</span><span>3 分钟前</span></span>
+            </div>
+            <span class="b-btn">查看</span>
+          </div>
+          <div class="b-row">
+            <div class="b-row-main">
+              <span class="b-title">修复导出 CSV 时的列错位</span>
+              <span class="b-meta"><span>等你答复</span><span>Q: 空行要跳过还是保留？</span></span>
+            </div>
+            <span class="b-btn">回复</span>
+          </div>
+        </div>
+        <div>
+          <div class="b-section-title">最近 24 小时</div>
+          <div class="b-stats">
+            <div class="b-stat"><span class="b-stat-label">收到</span><span class="b-stat-value">37</span></div>
+            <div class="b-stat"><span class="b-stat-label">筛掉</span><span class="b-stat-value">14</span></div>
+            <div class="b-stat"><span class="b-stat-label">评估</span><span class="b-stat-value">23</span></div>
+            <div class="b-stat"><span class="b-stat-label">接受</span><span class="b-stat-value">5</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="b-section-title">执行器</div>
+          <div class="b-stats">
+            <div class="b-stat"><span class="b-stat-label">运行中</span><span class="b-stat-value">2 / 3</span></div>
+            <div class="b-stat"><span class="b-stat-label">排队</span><span class="b-stat-value">1</span></div>
+            <div class="b-stat"><span class="b-stat-label">空闲</span><span class="b-stat-value">0</span></div>
+          </div>
+        </div>
+        <p class="b-hint">没有任何等待你处理的事项。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 2 · AFTER ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">02</span><h3>改成这样</h3></div>
+  <p class="sec-lede">「流程」成为 Overview 的主体。每个 Ticket 不再是一行文字，而是一枚标记，掉在它此刻停着的那一格里。点任意标记展开详情——依然是就地展开，因为你刚刚看的就是它的位置。</p>
+
+  <div class="device after">
+    <div class="device-bar"><span class="dot3"><i></i><i></i><i></i></span><span>Superagent · 带实时数据的方案稿</span></div>
+    <div class="tabs"><span class="tab on">概览</span><span class="tab">来源</span><span class="tab">对话</span><span class="tab">评估</span><span class="tab">执行</span><span class="tab">设置</span></div>
+    <div class="panel">
+
+      <!-- flow header -->
+      <div class="flowhead">
+        <h4>流程</h4>
+        <button class="chip ok" data-stage="已完成" type="button"><svg class="svg-ic"><use href="#i-check"/></svg><span class="num">12</span> 已完成</button>
+        <button class="chip wait" data-stage="等你" type="button"><span class="num">2</span> 等你</button>
+        <button class="chip run" data-stage="进行中" type="button"><span class="num">2</span> 进行中</button>
+        <button class="chip quiet" data-stage="排队" type="button"><span class="num">1</span> 排队</button>
+        <button class="chip quiet" data-stage="空闲" type="button"><span class="num">0</span> 空闲</button>
+        <span class="small muted" style="margin-left:auto">此刻 · 悬停看含义</span>
+      </div>
+
+      <!-- lane 1 -->
+      <div class="lane">
+        <div class="lane-label"><span class="swatch" style="background:#c3c8d0"></span>来信</div>
+        <div class="lane-stack">
+          <button class="tok done" data-stage="已完成"><span>GitHub · #128 评论</span></button>
+          <button class="tok done" data-stage="已完成"><span>飞书 · 静默天使</span></button>
+          <button class="tok done" data-stage="已完成"><span>GitHub · #131</span></button>
+        </div>
+        <div class="lane-side">收到 <span class="num">37</span></div>
+      </div>
+
+      <!-- lane 2 -->
+      <div class="lane">
+        <div class="lane-label"><span class="swatch" style="background:#3b78f6"></span>评估</div>
+        <div class="lane-stack">
+          <button class="tok done" data-stage="已完成"><span>accept · 带新字段</span></button>
+          <button class="tok done" data-stage="已完成"><span>accept · 列错位</span></button>
+          <button class="tok run" data-stage="进行中"><span class="spinner"></span><span>评估中 · UI 改版方案</span></button>
+        </div>
+        <div class="lane-side">评估 <span class="num">23</span></div>
+      </div>
+
+      <!-- lane 3 -->
+      <div class="lane">
+        <div class="lane-label"><span class="swatch" style="background:#3b78f6"></span>执行</div>
+        <div class="lane-stack">
+          <button class="tok run" data-stage="进行中"><span class="spinner"></span><span>给日期单元格加分钟</span></button>
+          <button class="tok wait" data-stage="等你"><span>等你答复 · 修复导出 CSV</span></button>
+          <button class="tok quiet" data-stage="排队"><span>排队 · 补测试</span></button>
+        </div>
+        <div class="lane-side"><span class="num">2 / 3</span> 槽位</div>
+      </div>
+
+      <!-- lane 4 -->
+      <div class="lane">
+        <div class="lane-label"><span class="swatch" style="background:#34b06a"></span>交付</div>
+        <div class="lane-stack">
+          <button class="tok wait" data-stage="等你"><span>等你确认 · PR #124</span></button>
+        </div>
+        <div class="lane-side">PR 1 · 合并 3</div>
+      </div>
+
+      <!-- lane 5 -->
+      <div class="lane">
+        <div class="lane-label"><span class="swatch" style="background:#34b06a"></span>结束</div>
+        <div class="lane-stack">
+          <button class="tok done" data-stage="已完成"><span>已合并 · PR #120</span></button>
+          <button class="tok done" data-stage="已完成"><span>已合并 · PR #118</span></button>
+          <button class="tok quiet" data-stage="已完成"><span>+ 4 已结束</span></button>
+        </div>
+        <div class="lane-side">7 天 · 6</div>
+      </div>
+
+      <!-- next step -->
+      <div class="next">
+        <h4>接下来该你 · 2 件</h4>
+
+        <div class="need">
+          <div class="need-icon rev"><svg class="svg-ic"><use href="#i-eye"/></svg></div>
+          <div class="need-body">
+            <span class="need-title">等你确认 PR #124</span>
+            <span class="need-q">把导出列宽限制在 80 字符，超长截断并加省略号</span>
+            <span class="need-meta"><span>结论 2.4</span><span>·</span><span class="num">3 分钟前</span><span>·</span><span>1 条待处理</span></span>
+          </div>
+          <span class="ask-user" style="width:64px" title="按钮占位"></span>
+        </div>
+
+        <div class="need">
+          <div class="need-icon"><svg class="svg-ic"><use href="#i-arrow"/></svg></div>
+          <div class="need-body">
+            <span class="need-title">修复导出 CSV 时的列错位</span>
+            <span class="need-q">空行要跳过还是保留？</span>
+            <span class="need-meta"><span>结论 2.4</span><span>·</span><span class="num">11 分钟前</span><span>·</span><span>等你答复</span></span>
+          </div>
+          <span class="ask-user" style="width:48px" title="按钮占位"></span>
+        </div>
+      </div>
+
+      <!-- system problems -->
+      <div class="problems">
+        <span class="pm-title">系统问题 · 1</span>
+        <span class="pm-body">飞书 来源可用性检查失败 · 30 分钟前，其他来源正常</span>
+        <span class="small" style="color:var(--ink-3)">去修复 →</span>
+      </div>
+
+    </div>
+  </div>
+  <p class="small muted" style="margin-top:10px">标记上的颜色就是上面那条流程横条的颜色：绿色已完成、橙色等你、蓝色进行中、红色出错、灰色排队或已结束。每格右侧的数字是过去 7 天的量，不参与颜色判定。</p>
+</section>
+
+<!-- ════════ 3 · RULE STRIP ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">03</span><h3>一条流程横条，回答「整体像什么」</h3></div>
+  <p class="sec-lede">如果只想要一句话的进度感，这个横条单独就能承担。按 7 天的量把每一格画成宽度成比例的色块；悬停显示数量与占比。它跟上面的流程行是同一份数据，两种读法：行看细节，条看比例。</p>
+
+  <div class="rules">
+    <div class="strip">
+      <div class="strip-head"><h4>Ticket 流向</h4><span class="note">过去 7 天 · 12 个 Ticket</span></div>
+      <div class="seg-track blocks">
+        <div class="seg done" style="flex:44"><span class="tt short">交付 5</span></div>
+        <div class="seg run" style="flex:22"><span class="tt short">执行 3</span></div>
+        <div class="seg wait" style="flex:14"><span class="tt short">等你 2</span></div>
+        <div class="seg quiet" style="flex:12"><span class="tt">结束 1</span></div>
+        <div class="seg bad" style="flex:8"><span class="tt">出错 1</span></div>
+      </div>
+      <div class="strip-foot">
+        <span class="seg-dot"><i style="background:#34b06a"></i>已到你手上或已合并</span>
+        <span class="seg-dot"><i style="background:#3b78f6"></i>Worker 在干活</span>
+        <span class="seg-dot"><i style="background:#e5a12a"></i>停在某一格，等你</span>
+        <span class="seg-dot"><i style="background:#dd4b41"></i>执行出错，等你决定</span>
+        <span class="total">接受率 52%</span>
+      </div>
+    </div>
+
+    <div class="strip">
+      <div class="strip-head"><h4>执行器的今天</h4><span class="note">每 5 分钟一格，最近的在最右</span></div>
+      <div class="dots">
+        <span class="seg done wide" title="空闲"></span><span class="seg done wide" title="空闲"></span>
+        <span class="seg run" title="2/3 忙"></span><span class="seg run" title="2/3 忙"></span><span class="seg run" title="3/3 忙"></span>
+        <span class="seg wait" title="1 个超时"></span><span class="seg run" title="2/3 忙"></span><span class="seg run" title="2/3 忙"></span>
+        <span class="seg quiet" title="暂停 20 分钟"></span><span class="seg quiet" title="暂停 20 分钟"></span>
+        <span class="seg run" title="1/3 忙"></span><span class="seg run" title="1/3 忙"></span><span class="seg run" title="2/3 忙"></span>
+        <span class="seg done wide" title="空闲"></span><span class="seg run" title="1/3 忙"></span>
+        <span class="seg run" title="2/3 忙"></span><span class="seg run" title="2/3 忙"></span><span class="seg wait" title="1 个重试"></span>
+        <span class="seg run" title="1/3 忙"></span><span class="seg done wide" title="空闲"></span>
+      </div>
+      <div class="strip-foot">
+        <span class="seg-dot"><i style="background:#3b78f6"></i>满负荷的时间段</span>
+        <span class="seg-dot"><i style="background:#e5a12a"></i>有重试</span>
+        <span class="seg-dot"><i style="background:#c3c8d0"></i>暂停或无人</span>
+        <span class="total">平均占用 1.7 / 3</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 4 · DETAIL ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">04</span><h3>点开一枚标记，就地看到它在做什么</h3></div>
+  <p class="sec-lede">详情沿用现有的 Ticket 详情数据，只重新排了优先级：最上面的永远是最新一次 assignment 在说什么，下面是这次 assignment 自己的三个槽位，再下面是每次 assignment 的推进条。历史留在折叠里。</p>
+
+  <div class="device">
+    <div class="device-bar"><span class="dot3"><i></i><i></i><i></i></span><span>Superagent · 详情（点流程行里的「给日期单元格加分钟」）</span></div>
+    <div class="detail">
+      <div class="detail-main">
+        <div class="d-title">
+          <div>
+            <h5>给日期单元格加分钟显示</h5>
+            <div class="d-crumb"><span>来信 · GitHub #128</span><span>›</span><span>accept（规则：UI 小改动）</span><span>›</span><span>执行</span></div>
+          </div>
+          <span class="chip run">进行中</span>
+        </div>
+
+        <div class="d-hero">
+          <span class="d-hero-label">Worker 刚报告</span>
+          <span class="d-hero-text">pr 分支已推。改了 <b>formatDateTime</b> 一处，加了 3 个用例。还在跑 typecheck 与 build。</span>
+          <div class="d-progress"><i></i></div>
+          <span class="small muted">第 2 次 assignment · 已运行 4 分 12 秒</span>
+        </div>
+
+        <div class="rail3" style="margin-bottom:14px">
+          <div class="cell"><div class="k">上下文用量</div><div class="v">62<em>%</em></div></div>
+          <div class="cell"><div class="k">工具调用</div><div class="v">18</div></div>
+          <div class="cell"><div class="k">已过时间</div><div class="v">4<em>分 12 秒</em></div></div>
+        </div>
+
+        <h4 style="margin:0 0 8px;font-size:12px;font-weight:600;color:var(--ink-3)">这次 assignment</h4>
+        <div class="dots" style="margin:0 0 14px">
+          <span class="seg quiet" style="width:auto;padding:0 9px;height:22px;font-size:11px">对话 0</span>
+          <span class="seg wait" style="width:auto;padding:0 9px;height:22px;font-size:11px">夹带内容 1</span>
+          <span class="seg run" style="width:auto;padding:0 9px;height:22px;font-size:11px">调用工具 18</span>
+          <span class="seg done" style="width:auto;padding:0 9px;height:22px;font-size:11px">结论 2</span>
+          <span class="seg quiet" style="width:auto;padding:0 9px;height:22px;font-size:11px">未答复 0</span>
+        </div>
+
+        <h4 style="margin:0 0 8px;font-size:12px;font-weight:600;color:var(--ink-3)">历史 assignment · 2</h4>
+        <div class="spark" style="display:flex;gap:12px;align-items:center;margin-bottom:6px">
+          <div style="flex:1">
+            <div class="small" style="font-weight:600">第 1 次 · 完成</div>
+            <div class="small muted">改了 formatDateTime 与 3 个测试文件，等了 11 分钟</div>
+          </div>
+          <span class="chip ok">ready</span>
+        </div>
+        <div class="spark" style="display:flex;gap:12px;align-items:center;opacity:.55">
+          <div style="flex:1">
+            <div class="small" style="font-weight:600">第 0 次 · 被重试覆盖</div>
+            <div class="small muted">开始前就中止了</div>
+          </div>
+          <span class="chip quiet">已中止</span>
+        </div>
+      </div>
+
+      <aside class="detail-side">
+        <div class="spark">
+          <div class="label"><span>等你的时长</span><span class="small">本 Ticket 累计</span></div>
+          <div class="big num">0<small style="font-size:12px;font-weight:500;color:var(--ink-3)">分</small></div>
+          <div class="bar"><i style="background:#e5a12a;flex:0"></i></div>
+          <div class="small muted">没有人等过它。</div>
+        </div>
+        <div class="spark">
+          <div class="label"><span>工作与等待的比例</span><span class="small">本 Ticket</span></div>
+          <div class="big num" style="font-size:20px">工作 <span style="color:#1f4fbf">7</span> · 等 <span style="color:#9a6206">11</span></div>
+          <div class="bar"><i style="background:#3b78f6;flex:7"></i><i style="background:#e5a12a;flex:11"></i></div>
+          <div class="legend"><span><i class="sw" style="background:#3b78f6"></i>Worker 在跑 <b>7 分</b></span><span><i class="sw" style="background:#e5a12a"></i>等你 <b>11 分</b></span></div>
+        </div>
+        <div class="spark">
+          <div class="label"><span>线程与订阅</span></div>
+          <div class="small" style="color:var(--ink-2);line-height:1.7">
+            GitHub <b>#128</b>（你自己的）<br>
+            <span class="muted">外加 1 条只读上下文</span>
+          </div>
+        </div>
+        <button class="b-btn" style="align-self:flex-start">打开 Worker 会话</button>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 5 · LIFECYCLE ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">05</span><h3>一个 Ticket 走过的五格</h3></div>
+  <p class="sec-lede">每格都是现有 <span class="mono-demo">ticketStage</span> 的一个取值，不新增状态，前端只渲染不推断。</p>
+
+  <div class="life">
+    <div class="life-step">
+      <span class="n">01</span><span class="t">来信</span>
+      <span class="d">收到消息、走完筛除、进入评估。</span>
+      <div class="shot"><span class="chip ok">已完成</span></div>
+    </div>
+    <div class="life-step">
+      <span class="n">02</span><span class="t">评估</span>
+      <span class="d">规则决定 accept / ignore / stop。</span>
+      <div class="shot"><span class="chip run">评估中</span></div>
+    </div>
+    <div class="life-step">
+      <span class="n">03</span><span class="t">执行</span>
+      <span class="d">Worker 在跑、在排队、或等你答复。</span>
+      <div class="shot"><span class="chip wait">等你答复</span></div>
+    </div>
+    <div class="life-step">
+      <span class="n">04</span><span class="t">交付</span>
+      <span class="d">PR 已开，等你合并或看结论。</span>
+      <div class="shot"><span class="chip wait">等你确认</span></div>
+    </div>
+    <div class="life-step">
+      <span class="n">05</span><span class="t">结束</span>
+      <span class="d">已合并、被关闭、或被人叫停。</span>
+      <div class="shot"><span class="chip ok">已合并</span></div>
+    </div>
+  </div>
+  <p class="small muted" style="margin-top:10px">「评审」不单独占一行。它是「交付」里的一个子状态——PR 已经准备好、机器人还在提意见——只在开完 PR 之后才出现。</p>
+</section>
+
+<!-- ════════ 6 · RULES ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">06</span><h3>两条硬规则</h3></div>
+  <p class="sec-lede">面板上的每个数字都必须对得上它指向的列表，这是这个产品一直守着的规矩。新界面有两个地方容易破规矩，这里先写死：</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>数字 = 它指向的列表</h4>
+      <div class="mini" style="margin-bottom:14px">
+        <div class="lane" style="grid-template-columns:70px 1fr;padding:8px 6px;border-top:0">
+          <div class="lane-label">等你 <span class="num" style="color:var(--ink-4)">2</span></div>
+          <div class="lane-stack"><span class="tok wait"><span>等你答复 · 修复导出</span></span><span class="tok wait"><span>等你确认 · PR #124</span></span></div>
+        </div>
+      </div>
+      <p class="small" style="color:var(--ink-2)">点「等你的 2」跳到执行页并带上筛选；跳过去的列表必须正好是这两条。如果多出第三条，是筛选错了；如果少一条，是数字算错了。</p>
+    </div>
+    <div class="card">
+      <h4>流程横条的比例，分母写出来</h4>
+      <div class="mini" style="margin-bottom:14px;padding:12px 10px">
+        <div class="seg-track" style="margin:0 0 6px;height:26px"><div class="seg done" style="flex:44"><span class="tt">5</span></div><div class="seg run" style="flex:22"><span class="tt">3</span></div><div class="seg wait" style="flex:14"><span class="tt">2</span></div><div class="seg quiet" style="flex:12"><span class="tt">1</span></div><div class="seg bad" style="flex:8"><span class="tt">1</span></div></div>
+        <div class="small muted">12 个 Ticket · 过去 7 天</div>
+      </div>
+      <p class="small" style="color:var(--ink-2)">色块会随时间滑动，所以横条必须把时间窗和总数写在旁边，否则读者会以为数字的意思变了。默认 7 天，点横条可在 24 小时与 7 天之间切换。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 7 · TOKENS ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">07</span><h3>颜色、字、间距</h3></div>
+  <p class="sec-lede">全部取自 DeepSeek Harness 已有的 <span class="mono-demo">--dsw-alias-*</span> 设计令牌，不新增色相。深浅两套主题共用同一组语义名。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>语义色</h4>
+      <div class="swatches">
+        <div class="swatch-card"><div class="blk" style="background:#22a35a"></div><div class="meta"><span class="nm">已完成 / 已合并</span><span class="hx">state-success-primary #22c55e</span><span class="use">到终态、到人手上</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#2f6bf0"></div><div class="meta"><span class="nm">进行中</span><span class="hx">state-business-primary #4176e6</span><span class="use">Worker 在跑</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#d98a12"></div><div class="meta"><span class="nm">等你</span><span class="hx">state-warn-primary #f59e0b</span><span class="use">唯一会打断的颜色</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#d9342b"></div><div class="meta"><span class="nm">出错</span><span class="hx">state-error-primary #ef4444</span><span class="use">执行失败、来源故障</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#a7acb5"></div><div class="meta"><span class="nm">排队 / 空闲 / 已结束</span><span class="hx">neutral-bluish-400 #adb2b8</span><span class="use">不占注意力</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#14161a"></div><div class="meta"><span class="nm">正文</span><span class="hx">label-primary #0f1115</span><span class="use">标题与可读文字</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#43484f"></div><div class="meta"><span class="nm">次级</span><span class="hx">label-secondary #61666b</span><span class="use">说明与元信息</span></div></div>
+        <div class="swatch-card"><div class="blk" style="background:#eef0f3"></div><div class="meta"><span class="nm">底色</span><span class="hx">bg-module-platform #f5f6f7</span><span class="use">面板背景</span></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>字阶</h4>
+      <div class="specimen-row"><span class="tag">22 / 600</span><span class="type-1">概览</span></div>
+      <div class="specimen-row"><span class="tag">15 / 600</span><span class="type-2">给日期单元格加分钟显示</span></div>
+      <div class="specimen-row"><span class="tag">13.5 / 400</span><span class="type-3">Worker 刚报告：pr 分支已推。</span></div>
+      <div class="specimen-row"><span class="tag">12 / 400</span><span class="type-4">过去 7 天 · 12 个 Ticket</span></div>
+      <div class="specimen-row"><span class="tag">mono 30</span><span class="type-5">2 / 3</span></div>
+      <div class="specimen-row"><span class="tag">mono 12</span><span class="type-6">pr#128 · formatDateTime</span></div>
+      <p class="small muted" style="margin-top:12px">正文用系统无衬线（PingFang SC / 微软雅黑），数字与 PR 号用等宽字体，让一列数字在竖着看时能对齐。字号只有这六档，不再增加。</p>
+    </div>
+
+    <div class="card">
+      <h4>间距与圆角</h4>
+      <dl class="kvgrid">
+        <dt>行高</dt><dd>44px 行内竖直内边距 11px</dd>
+        <dt>标记高</dt><dd>26px，圆角 7px</dd>
+        <dt>卡片圆角</dt><dd>14px（面板）/ 10px（内卡片）/ 7px（标记）</dd>
+        <dt>分栏</dt><dd>流程行左 104px 标签、中弹性、右 108px 统计</dd>
+        <dt>内容宽度</dt><dd>最大 960px，居中</dd>
+        <dt>分割线</dt><dd>0.5px，颜色 <span class="mono-demo">border-l3</span></dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h4>动效</h4>
+      <dl class="kvgrid">
+        <dt>进行中的标记</dt><dd>左侧小圆环 0.9s 匀速旋转</dd>
+        <dt>等你</dt><dd>无动画。颜色本身就是提示</dd>
+        <dt>数据刷新</dt><dd>数字变化时做一次 120ms 的淡入，不做跳动</dd>
+        <dt>展开详情</dt><dd>从点击的那枚标记下方展开，180ms 缓出</dd>
+        <dt>减少动效</dt><dd>系统开了 reduced-motion 时全部停掉</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 8 · RESPONSIVE ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">08</span><h3>窄屏只换排布，不丢信息</h3></div>
+  <p class="sec-lede">面板本身就在 DSH 侧边栏里，宽度常常不到 600px。窄屏下右侧的统计列收进标记内部，流程行变成两行，仍然是五格都在。</p>
+
+  <div class="pair">
+    <figure>
+      <figcaption><span class="badge before">≥ 720px</span>右侧统计独立成列</figcaption>
+      <div class="mini">
+        <div class="lane" style="grid-template-columns:104px 1fr 108px;padding:9px 4px;border-top:0">
+          <div class="lane-label"><span class="swatch" style="background:#3b78f6"></span>执行</div>
+          <div class="lane-stack"><span class="tok run"><span class="spinner"></span><span>给日期单元格加分钟</span></span></div>
+          <div class="lane-side"><span class="num">2 / 3</span> 槽位</div>
+        </div>
+        <div class="lane" style="grid-template-columns:104px 1fr 108px;padding:9px 4px">
+          <div class="lane-label"><span class="swatch" style="background:#34b06a"></span>交付</div>
+          <div class="lane-stack"><span class="tok wait"><span>等你确认 · PR #124</span></span></div>
+          <div class="lane-side">PR 1 · 合并 3</div>
+        </div>
+      </div>
+    </figure>
+    <figure>
+      <figcaption><span class="badge after">&lt; 720px</span>统计并进标记</figcaption>
+      <div class="mini" style="max-width:340px">
+        <div class="lane" style="grid-template-columns:1fr;gap:5px;padding:9px 4px;border-top:0">
+          <div class="lane-label"><span class="swatch" style="background:#3b78f6"></span>执行 <span class="muted small" style="margin-left:auto">2/3 槽位</span></div>
+          <div class="lane-stack"><span class="tok run"><span class="spinner"></span><span>给日期单元格加分钟</span></span></div>
+        </div>
+        <div class="lane" style="grid-template-columns:1fr;gap:5px;padding:9px 4px">
+          <div class="lane-label"><span class="swatch" style="background:#34b06a"></span>交付 <span class="muted small" style="margin-left:auto">PR 1 · 合并 3</span></div>
+          <div class="lane-stack"><span class="tok wait"><span>等你确认 · PR #124</span></span></div>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ════════ 9 · MOVES ════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">09</span><h3>落地顺序</h3></div>
+  <p class="sec-lede">每一步都能单独交付、单独看效果。前两步不动后端，第三步才要补数据。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>三个阶段</h4>
+      <ol class="moves">
+        <li><div><b>流程行 + 流程横条（只用现有数据）</b><br><span class="small muted">把 Overview 的四块换成流程行，横条挂在下面。数据来自 GET overview 与 GET threads，后端不改。</span></div></li>
+        <li><div><b>点标记就地展开 + 详情重排</b><br><span class="small muted">用 GET tickets/:id 现有字段，把「Worker 刚报告」提到最上面，三个槽位做成小格。</span></div></li>
+        <li><div><b>补时间维度的数据</b><br><span class="small muted">「等你的时长」「工作与等待的比例」现在没有存，需要后端在 assignment 上记录开始与结束。这是唯一改后端的一步。</span></div></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>这次不改动</h4>
+      <ul style="margin:0;padding-left:18px;color:var(--ink-2);font-size:13px;line-height:1.9">
+        <li>侧边栏的六个标签页，位置与名字都不变。</li>
+        <li>设置页、来源页、对话页的内部结构不动。</li>
+        <li>执行、重试、暂停这些按钮的行为不动。</li>
+        <li>Flow 的既有定义（收到、筛掉、评估、接受）保留，只是不再占据 Overview 的主位。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+<script>
+  // 只做一件小事：点流程行或横条里的名字，滚动到对应的流程行，并闪一下。
+  document.querySelectorAll('[data-stage]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var stage = el.getAttribute('data-stage');
+      var targets = document.querySelectorAll('.after .lane');
+      for (var i = 0; i < targets.length; i++) {
+        var label = targets[i].querySelector('.lane-label');
+        if (!label) continue;
+        var name = label.textContent.trim();
+        var mapped = name === '来信' || name === '评估' ? '已完成'
+          : name === '执行' ? '进行中'
+          : name === '交付' ? '等你'
+          : '已完成';
+        if (stage === '等已结束' ? name === '结束' : mapped === stage || stage === '等你' && name === '交付') {
+          if (stage === '等你' && name !== '交付' && name !== '执行') continue;
+          var row = targets[i].querySelector('.lane-stack');
+          if (!row) continue;
+          row.style.transition = 'box-shadow .3s';
+          row.style.boxShadow = '0 0 0 3px rgba(47,107,240,.25)';
+          targets[i].scrollIntoView({ block: 'center', behavior: 'smooth' });
+          setTimeout(function () { row.style.boxShadow = 'none'; }, 1100);
+          return;
+        }
+      }
+    });
+  });
+</script>
+</body>
+</html>

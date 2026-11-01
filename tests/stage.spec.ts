@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { canRetry, ticketStage, type Assignment, type ReportState, type Ticket } from '../src/core/index.ts'
+import { canRetry, ticketStage, waitsAtStation, workStation, WORK_STATIONS, type Assignment, type ReportState,
+  type Ticket } from '../src/core/index.ts'
 
 const assignment = (overrides: Partial<Assignment> = {}): Assignment => ({ id: 'a', state: 'running', createdAt: '', ...overrides })
 const reported = (state: ReportState, overrides: Partial<Assignment> = {}) => assignment({ report: { state, summary: '', at: '' }, ...overrides })
@@ -57,5 +58,37 @@ describe('canRetry', () => {
     const delivery = ticket({ ...answered, delivery: { error: 'offline', at: '' }, assignments: [reportedAt('failed')] })
     expect(ticketStage(delivery)).toEqual({ stage: 'person', action: 'delivery' })
     expect(canRetry(delivery)).toBe(true)
+  })
+})
+
+describe('workStation', () => {
+  it.each([
+    ['a ready Report waits on delivery, not on execution', { stage: 'person', action: 'review' }, 'deliver'],
+    ['an answered Ticket still runs', { stage: 'person', action: 'answer' }, 'exec'],
+    ['a failed Report still runs, but waits for a person', { stage: 'person', action: 'failed' }, 'exec'],
+    ['an undelivered Input still runs', { stage: 'person', action: 'delivery' }, 'exec'],
+    ['working runs', { stage: 'working' }, 'exec'],
+    ['a queued Ticket runs', { stage: 'working', action: 'queued' }, 'exec'],
+    ['an idle Ticket runs', { stage: 'idle' }, 'exec'],
+    ['an ended Ticket has ended wherever it stopped', { stage: 'ended' }, 'ended'],
+  ] as const)('%s', (_name, stage, station) => {
+    expect(workStation(stage)).toBe(station)
+  })
+
+  it('holds every stage in exactly one station, so the flow never loses or duplicates a Ticket', () => {
+    const stages = [
+      { stage: 'person', action: 'delivery' }, { stage: 'person', action: 'answer' }, { stage: 'person', action: 'review' },
+      { stage: 'person', action: 'blocked' }, { stage: 'person', action: 'failed' }, { stage: 'working' },
+      { stage: 'working', action: 'queued' }, { stage: 'idle' }, { stage: 'ended' },
+    ] as const
+    const stations = stages.map(workStation)
+    expect(stations.every(station => WORK_STATIONS.includes(station))).toBe(true)
+    expect(stations).toHaveLength(stages.length)
+  })
+
+  it('counts only a stage that waits at its station as needing a person', () => {
+    expect((['delivery', 'answer', 'review', 'blocked', 'failed'] as const).map(action => waitsAtStation({ stage: 'person', action })))
+      .toEqual([true, true, true, true, true])
+    expect([waitsAtStation({ stage: 'working' }), waitsAtStation({ stage: 'idle' }), waitsAtStation({ stage: 'ended' })]).toEqual([false, false, false])
   })
 })

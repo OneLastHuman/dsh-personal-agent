@@ -1,10 +1,10 @@
 /** Overview view: active system problems, tickets awaiting human action, executor load, and 24-hour trigger flow. */
-import { reasonText, ticketStage, type Decision, type Thread } from '../../core/index.ts'
+import { reasonText, ticketStage, waitsAtStation, workStation, WORK_STATIONS, type Decision, type Thread, type Ticket } from '../../core/index.ts'
 import type { Health } from '../../sources/host.ts'
 import type { SetupProblem } from '../../setup.ts'
 import { anyoneAllowed } from '../../policy.ts'
 import type { Store } from '../store.ts'
-import { awaitingEval, dayAgo, newestFirst, ownersOf, snapshot, threadSummary, type ViewHost } from './records.ts'
+import { awaitingEval, dayAgo, newestFirst, ownersOf, snapshot, threadSummary, ticketLine, type Snapshot, type ViewHost } from './records.ts'
 import { sourceHealth, type HealthMap } from './sources.ts'
 import { ticketRow, type ExecutorLoad } from './tickets.ts'
 import { preview } from './text.ts'
@@ -74,7 +74,32 @@ export function overview(host: ViewHost, health: HealthMap, policyVersionValue: 
     executor: { ...load, maxWorkers: settings.executor.maxWorkers, idle: open.filter(ticket => ticketStage(ticket).stage === 'idle').length },
     flow: { received, filtered, triggers: received - filtered, judged: judgement.judged, accepted: judgement.accepted,
       evaluating: evaluating.length, dropped: store.read.droppedSince(since) },
+    stations: workStations(view, open, endedSince(store, since)),
     policyVersion: policyVersionValue,
   }
 }
-export type OverviewView = ReturnType<typeof overview>
+/** Tickets that ended in the last day, newest first: the flow's last station shows what finished, not all of history. */
+function endedSince(store: Store, since: string): Ticket[] {
+  return store.tickets.list().filter(ticket => !!ticket.ended && ticket.ended.at >= since).sort(newestFirst)
+}
+/** How many Tickets each station holds and how many of them wait for a person, in station order. */
+export function workStations(view: Snapshot, open: Ticket[], ended: Ticket[]) {
+  const stations = WORK_STATIONS.map(station => ({ station, tickets: [] as ReturnType<typeof ticketLine>[], waiting: 0 }))
+  const byStation = new Map(stations.map(item => [item.station, item]))
+  for (const ticket of open) {
+    const stage = ticketStage(ticket)
+    const entry = byStation.get(workStation(stage))!
+    entry.tickets.push(ticketLine(view, ticket))
+    if (waitsAtStation(stage)) entry.waiting += 1
+  }
+  // Only the last day's ended Tickets fill the last station, and none of them waits for a person any more.
+  const done = byStation.get('ended')!
+  done.tickets = ended.map(ticket => ticketLine(view, ticket))
+  done.waiting = 0
+  return { stations, ended: ended.length }
+}
+/**
+ * The overview's payload. `stations` is optional because a panel newer than its service still has to render: the flow
+ * section then shows nothing rather than taking the whole page down.
+ */
+export type OverviewView = Omit<ReturnType<typeof overview>, 'stations'> & { stations?: ReturnType<typeof overview>['stations'] }

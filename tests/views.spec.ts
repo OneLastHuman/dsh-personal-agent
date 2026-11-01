@@ -8,7 +8,7 @@ import { SourceRegistry } from '../src/sources/registry.ts'
 import { feishuKind } from '../src/sources/feishu.ts'
 import { githubKind } from '../src/sources/github.ts'
 import { snapshot, threadSummary, ticketSummary, triggerView } from '../src/app/views/records.ts'
-import { basisFacts, ticketDetail } from '../src/app/views/tickets.ts'
+import { basisFacts, ticketDetail, ticketTiming } from '../src/app/views/tickets.ts'
 import { threadDetail } from '../src/app/views/threads.ts'
 import { droppedReplies, sourcesStatus } from '../src/app/views/sources.ts'
 import { overview } from '../src/app/views/overview.ts'
@@ -19,7 +19,7 @@ import { feishuLink } from '../src/sources/feishu-channel.ts'
 import { feishuChannel, feishuTriggerId } from '../src/sources/feishu-trigger.ts'
 import { githubLink } from '../src/sources/github-channel.ts'
 import { githubChannel } from '../src/sources/github-trigger.ts'
-import { followupOwners, type ChannelRef } from '../src/core/index.ts'
+import { followupOwners, type Assignment, type ChannelRef, type Ticket } from '../src/core/index.ts'
 
 let directory: string
 let store: Store
@@ -318,4 +318,94 @@ it('reads each ticket a page\'s follow-ups reached once, and nothing for a messa
   const records = { tickets: { get: vi.fn() }, threads: { get: vi.fn() }, triggers: store.triggers }
   expect(followupOwners(store.triggers.get('f3')!, records)).toEqual([])
   expect([records.tickets.get, records.threads.get].map(read => read.mock.calls.length)).toEqual([0, 0])
+})
+
+// The flow groups Tickets by station; the panel's counts are the lengths of those lists, so the grouping must partition.
+it('puts each open Ticket in exactly one station of the flow, and shows only the last day\'s ended Tickets in the last', () => {
+  const host = views()
+  const report = (state: 'ready' | 'failed' | 'waiting') => ({ state, summary: 's', at: '2026-09-22T00:00:00Z' })
+  // One Ticket per stage the flow has to place, plus one that ended long ago.
+  live('runs')
+  live('review')
+  store.tickets.save({ ...store.tickets.get('review')!, assignments: [{ id: 'a', state: 'running', createdAt: at,
+    report: report('ready') }] })
+  live('failed')
+  store.tickets.save({ ...store.tickets.get('failed')!, assignments: [{ id: 'a', state: 'running', createdAt: at,
+    report: report('failed') }] })
+  live('done-now')
+  store.tickets.save({ ...store.tickets.get('done-now')!, ended: { at, by: 'executor', reason: 'closed', outcome: 'closed' } })
+  live('done-old')
+  store.tickets.save({ ...store.tickets.get('done-old')!, ended: { at: '2020-01-01T00:00:00Z', by: 'executor', reason: 'closed',
+    outcome: 'closed' } })
+
+  const view = overview(host, {}, 'v1', load)
+  const placed = view.stations.stations.flatMap(item => item.tickets.map(ticket => ticket.id))
+  // Every open Ticket appears once, and no Ticket appears twice; within a station the order is the store's, not this test's.
+  const station = (name: string) => view.stations.stations.find(item => item.station === name)!.tickets.map(ticket => ticket.id).sort()
+  expect(placed.filter(id => id !== 'done-now').sort()).toEqual(['failed', 'review', 'runs'])
+  expect(new Set(placed).size).toBe(placed.length)
+  expect(view.stations.stations.map(item => item.station)).toEqual(['exec', 'deliver', 'ended'])
+  expect(station('exec')).toEqual(['failed', 'runs'])
+  expect(station('deliver')).toEqual(['review'])
+  // Only the ended Ticket from the last day is listed; the one from 2020 is not.
+  expect(station('ended')).toEqual(['done-now'])
+  // `waiting` counts the stages that wait for a person, which is the failure here and the review there.
+  expect(view.stations.stations.map(item => item.waiting)).toEqual([1, 1, 0])
+  expect(view.stations.ended).toBe(1)
+})
+
+// Work is what an Assignment ran for; waiting is the rest of the Ticket's life, so the two spans add up to that life.
+it('splits a Ticket\'s life into the time its worker ran and the time it waited', () => {
+  const base = { id: 'tt', title: 'tt', decisionId: 'd', channels: [], undelivered: [], createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z', assignments: [],
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' },
+      scope: '' }, origin: { triggerId: 'e0', triggerIds: ['e0'] }, inputs: [] } as unknown as Ticket
+  const now = Date.parse('2026-01-01T01:00:00Z')
+  // Two Assignments ran 10 and 5 minutes inside the hour; the remaining 45 minutes were spent waiting.
+  const ticket = { ...base, assignments: [
+    { id: 'a1', state: 'ended', createdAt: '2026-01-01T00:00:00Z', startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T00:10:00Z' },
+    { id: 'a2', state: 'ended', createdAt: '2026-01-01T00:20:00Z', startedAt: '2026-01-01T00:20:00Z', endedAt: '2026-01-01T00:25:00Z' },
+  ] as Assignment[] }
+  expect(ticketTiming(ticket as unknown as Ticket, now)).toMatchObject({ working: 15 * 60_000, waiting: 45 * 60_000, ended: false })
+  // A Ticket nobody has started has waited for all of its life.
+  expect(ticketTiming({ ...base, assignments: [] } as unknown as Ticket, now)).toMatchObject({ working: 0, waiting: 60 * 60_000 })
+  // An ended Ticket stops waiting when it ends, not when this is read.
+  const ended = { ...ticket, ended: { at: '2026-01-01T00:30:00Z', by: 'executor', reason: 'closed', outcome: 'closed' } } as unknown as Ticket
+  expect(ticketTiming(ended, now)).toMatchObject({ working: 15 * 60_000, waiting: 15 * 60_000, ended: true })
+})
+
+it('counts no work for an Assignment that never recorded a start, or one that ended before it began', () => {
+  const base = { id: 'tt', title: 'tt', decisionId: 'd', channels: [], undelivered: [], createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z', assignments: [],
+    mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' },
+      scope: '' }, origin: { triggerId: 'e0', triggerIds: ['e0'] }, inputs: [] } as unknown as Ticket
+  const timing = ticketTiming({ ...base, assignments: [
+    { id: 'a1', state: 'pending', createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'a2', state: 'ended', createdAt: '2026-01-01T00:00:00Z', startedAt: '2026-01-01T00:10:00Z', endedAt: '2026-01-01T00:05:00Z' },
+  ] as Assignment[] } as unknown as Ticket, Date.parse('2026-01-01T00:20:00Z'))
+  expect(timing).toMatchObject({ working: 0, waiting: 20 * 60_000 })
+})
+
+it('lists the route a Trigger took: the Tickets it reached, those that handed it back, and what decided it', () => {
+  const host = views()
+  live('t1')
+  store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
+    correlated: [], pending: [], meta: {} })
+  store.triggers.save(message('r1', { source: 'feishu', id: 'ou_alice' }))
+  store.triggers.saveDisposition('r1', { fanout: ['t1', 'gone'], context: ['gone'], at })
+  const view = snapshot(host)
+  expect(triggerView(view, store.triggers.get('r1')!).trail).toEqual([
+    { step: 'reached', ticketId: 't1', context: false },
+    { step: 'reached', ticketId: 'gone', context: true },
+  ])
+
+  // Handing it back names the reason, and a Source that filtered it stops the route there.
+  store.triggers.saveDisposition('r2', { fanout: [], handbacks: [{ ticketId: 't1', reason: 'scope', at }], at })
+  store.triggers.save(message('r2', { source: 'feishu', id: 'ou_alice' }))
+  expect(triggerView(snapshot(host), store.triggers.get('r2')!).trail).toEqual([
+    { step: 'handback', ticketId: 't1', reason: 'scope', at },
+  ])
+  store.triggers.saveDisposition('r3', { fanout: [], filtered: { code: 'channelIgnored' }, at })
+  store.triggers.save(message('r3', { source: 'feishu', id: 'ou_alice' }))
+  expect(triggerView(snapshot(host), store.triggers.get('r3')!).trail).toEqual([{ step: 'filtered', reason: { code: 'channelIgnored' } }])
 })

@@ -222,3 +222,30 @@ it('sends one stop for a double click on Confirm', async () => {
   await act(async () => { confirm.click(); confirm.click() })
   expect(server.requests.filter(request => request.path === 'tickets/t1/stop')).toHaveLength(1)
 })
+
+it('shows where a Ticket\'s time went, apart from the work its worker ran', async () => {
+  at({ page: 'execution', id: 't1' })
+  await mount()
+  const labels = all('.dt-timing-part').map(part => part.textContent?.replace(/\s+/g, ' ').trim())
+  expect(labels).toEqual(['Worker 在跑 7 分钟', '等人 11 分钟'])
+  // The bar's filled share is the work's share of the two spans, so a reader can see the ratio without adding up.
+  const width = document.querySelector<HTMLElement>('.dt-timing-working')?.style.width
+  expect(width).toBe(`${Math.round(7 / 18 * 100)}%`)
+  expect(document.querySelector('.dt-timing-since')?.textContent).toBe('从创建到现在')
+})
+
+it('says nothing about timing when a Ticket has no measurable life yet', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, timing: { working: 0, waiting: 0, since: '', ended: false } }
+  at({ page: 'execution', id: 't1' })
+  await mount()
+  expect(document.querySelector('.dt-timing')).toBeNull()
+})
+
+it('names the end of a Ticket when that is where its time stopped', async () => {
+  server.ticketDetails.t1 = { ...server.ticketDetails.t1!, timing: { working: 60_000, waiting: 60_000, since: '', ended: true } }
+  at({ page: 'execution', id: 't1' })
+  await mount()
+  expect(document.querySelector('.dt-timing-since')?.textContent).toBe('从创建到结束')
+  expect(all('.dt-timing-part').map(part => part.textContent?.replace(/\s+/g, ' ').trim()))
+    .toEqual(['Worker 在跑 1 分钟', '等人 1 分钟'])
+})

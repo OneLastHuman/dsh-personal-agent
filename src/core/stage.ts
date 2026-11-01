@@ -24,3 +24,18 @@ export function ticketStage(ticket: Ticket): TicketStage {
 export function canRetry(ticket: Ticket): boolean {
   return !ticket.ended && (waitsForPerson(ticket) || !!ticket.delivery)
 }
+
+/**
+ * The stations of one piece of work, in the order the panel shows them. Each maps a `TicketStage` onto where a reader
+ * expects to find it: work the Executor still runs, work waiting on a review, and work that is over.
+ */
+export const WORK_STATIONS = ['exec', 'deliver', 'ended'] as const
+export type WorkStation = typeof WORK_STATIONS[number]
+/** The station a Ticket's stage belongs to; `deliver` holds a ready report, and an ended Ticket ends wherever it stopped. */
+export function workStation(stage: TicketStage): WorkStation {
+  if (stage.stage === 'ended') return 'ended'
+  if (stage.stage === 'person' && stage.action === 'review') return 'deliver'
+  return 'exec'
+}
+/** Whether a Ticket at this station waits for the operator to move it, as opposed to the Executor or nobody. */
+export const waitsAtStation = (stage: TicketStage): boolean => stage.stage === 'person'
