@@ -43,6 +43,7 @@ function TriggerItem({ trigger, earlier, target, subscribed, requeue }: {
     <Earlier items={earlier} />
     {trigger.disposition.handbacks.map(item => <Hint key={item.ticketId}>{t('handedBack', { ticket: item.title,
       reason: item.reason })}</Hint>)}
+    <TriggerTrail trail={trigger.trail} />
     <div className="dt-event-foot">
       {triggerTags(t, trigger, subscribed)}
       {ticketId && !subscribed.has(ticketId) && <button type="button" className="dt-textlink dt-icon-link"
@@ -173,4 +174,28 @@ export function ThreadPage({ id, target }: { id: string; target?: string }) {
         onConfirm={unsubscribe} />
     </div>}
   </>
+}
+
+/**
+ * The route a Trigger took, as an ordered list of the facts recorded about it. Hidden when it says nothing a reader could
+ * not already see in the tags above.
+ */
+function TriggerTrail({ trail }: { trail: TriggerRow['trail'] }) {
+  const { t } = usePanel()
+  if (!trail.length) return null
+  const step = (item: TriggerRow['trail'][number], index: number) => {
+    switch (item.step) {
+      case 'filtered': return t('trail.filtered', { reason: reasonLabel(t, item.reason) })
+      case 'reached': return t(item.context ? 'trail.reachedContext' : 'trail.reached', { ticket: item.ticketId })
+      case 'handback': return t('trail.handback', { ticket: item.ticketId, reason: reasonLabel(t, { code: item.reason }) })
+      case 'acked': return t('trail.acked', { ticket: item.ticketId })
+      case 'delivered': return t('trail.delivered')
+      case 'queued': return t('trail.queued')
+      case 'evaluating': return t('trail.evaluating')
+      case 'decision': return t('trail.decision', { outcome: valueLabel(t, 'decision', item.outcome) })
+    }
+    // Every step is handled above; this keeps the return type honest if a step is added.
+    return `step ${index}`
+  }
+  return <ol className="dt-trail">{trail.map((item, index) => <li key={index} className="dt-trail-step">{step(item, index)}</li>)}</ol>
 }

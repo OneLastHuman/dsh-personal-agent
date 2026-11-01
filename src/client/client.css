@@ -404,3 +404,17 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
   .dt-flow-row { grid-template-columns: 64px minmax(0, 1fr); }
   .dt-flow-detail { grid-column: 2; text-align: left; }
 }
+/* Where a Ticket's time went: one bar split between work and waiting, with the two spans named below it. */
+.dt-timing { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }
+.dt-timing-title { font-weight: 500; color: var(--dsw-alias-label-secondary); }
+.dt-timing-bar { flex: 1 1 120px; min-width: 80px; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); display: flex; }
+.dt-timing-working { display: block; height: 100%; background: var(--dsw-alias-state-business-primary); }
+.dt-timing-part { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.dt-timing-key { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.dt-timing-key[data-part='working'] { background: var(--dsw-alias-state-business-primary); }
+.dt-timing-key[data-part='waiting'] { background: var(--dsw-alias-state-warn-primary); }
+.dt-timing-since { margin-left: auto; }
+/* The route a Trigger took, in the order the rules applied it. */
+.dt-trail { list-style: none; margin: 0; padding: 0 0 0 10px; display: flex; flex-direction: column; gap: 2px; border-left: 1.5px solid var(--dsw-alias-border-l3); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }
+.dt-trail-step { position: relative; }
+.dt-trail-step::before { content: ""; position: absolute; left: -14px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--dsw-alias-border-l4); }

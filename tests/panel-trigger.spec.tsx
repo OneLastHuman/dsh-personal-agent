@@ -142,3 +142,33 @@ it('shows a link\'s target far back with every Trigger after it', async () => {
   expect(document.querySelector('.dt-highlight .dt-event-text')?.textContent).toBe('message m10')
   expect(all('button').some(button => button.textContent === zh.loadEarlier)).toBe(false)
 })
+
+it('lists the route a Trigger took, from its Source through each Ticket to what decided it', async () => {
+  await mount()
+  await click(zh['tab.trigger'])
+  await click('这个文案好奇怪')
+  // The timeline is newest first, so e4 (filtered by its Source) precedes e3 (which reached a Ticket); each shows only its own route.
+  expect(all('.dt-trail').map(trail => [...trail.querySelectorAll('.dt-trail-step')].map(step => step.textContent)))
+    .toEqual([['被来源筛掉：发送者不在这个来源的名单里'], ['投递给 t1']])
+})
+
+it('names a Ticket\'s hand-back reason and marks a context-only delivery in the route', async () => {
+  const page = server.threadPages
+  server.threadPages = (key, query) => {
+    const base = page(key, query)
+    return base && { ...base, timeline: [
+      trigger('h1', '2026-09-23T00:02:00Z', { disposition: { fanout: ['t1'], handbacks: [{ ticketId: 't1', title: '修复回归',
+        reason: 'out of scope', at: '2026-09-23T00:03:00Z' }] },
+        trail: [{ step: 'reached', ticketId: 't1', context: false }, { step: 'reached', ticketId: 't2', context: true },
+          { step: 'handback', ticketId: 't1', reason: 'out of scope', at: '2026-09-23T00:03:00Z' }] }),
+    ] }
+  }
+  await mount()
+  await click(zh['tab.trigger'])
+  await click('这个文案好奇怪')
+  expect(all('.dt-trail .dt-trail-step').map(step => step.textContent)).toEqual([
+    '投递给 t1',
+    '只作为上下文通知 t2',
+    't1 退回：out of scope',
+  ])
+})
