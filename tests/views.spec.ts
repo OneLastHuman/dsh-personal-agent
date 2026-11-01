@@ -319,3 +319,37 @@ it('reads each ticket a page\'s follow-ups reached once, and nothing for a messa
   expect(followupOwners(store.triggers.get('f3')!, records)).toEqual([])
   expect([records.tickets.get, records.threads.get].map(read => read.mock.calls.length)).toEqual([0, 0])
 })
+
+// The flow groups Tickets by station; the panel's counts are the lengths of those lists, so the grouping must partition.
+it('puts each open Ticket in exactly one station of the flow, and shows only the last day\'s ended Tickets in the last', () => {
+  const host = views()
+  const report = (state: 'ready' | 'failed' | 'waiting') => ({ state, summary: 's', at: '2026-09-22T00:00:00Z' })
+  // One Ticket per stage the flow has to place, plus one that ended long ago.
+  live('runs')
+  live('review')
+  store.tickets.save({ ...store.tickets.get('review')!, assignments: [{ id: 'a', state: 'running', createdAt: at,
+    report: report('ready') }] })
+  live('failed')
+  store.tickets.save({ ...store.tickets.get('failed')!, assignments: [{ id: 'a', state: 'running', createdAt: at,
+    report: report('failed') }] })
+  live('done-now')
+  store.tickets.save({ ...store.tickets.get('done-now')!, ended: { at, by: 'executor', reason: 'closed', outcome: 'closed' } })
+  live('done-old')
+  store.tickets.save({ ...store.tickets.get('done-old')!, ended: { at: '2020-01-01T00:00:00Z', by: 'executor', reason: 'closed',
+    outcome: 'closed' } })
+
+  const view = overview(host, {}, 'v1', load)
+  const placed = view.stations.stations.flatMap(item => item.tickets.map(ticket => ticket.id))
+  // Every open Ticket appears once, and no Ticket appears twice; within a station the order is the store's, not this test's.
+  const station = (name: string) => view.stations.stations.find(item => item.station === name)!.tickets.map(ticket => ticket.id).sort()
+  expect(placed.filter(id => id !== 'done-now').sort()).toEqual(['failed', 'review', 'runs'])
+  expect(new Set(placed).size).toBe(placed.length)
+  expect(view.stations.stations.map(item => item.station)).toEqual(['exec', 'deliver', 'ended'])
+  expect(station('exec')).toEqual(['failed', 'runs'])
+  expect(station('deliver')).toEqual(['review'])
+  // Only the ended Ticket from the last day is listed; the one from 2020 is not.
+  expect(station('ended')).toEqual(['done-now'])
+  // `waiting` counts the stages that wait for a person, which is the failure here and the review there.
+  expect(view.stations.stations.map(item => item.waiting)).toEqual([1, 1, 0])
+  expect(view.stations.ended).toBe(1)
+})

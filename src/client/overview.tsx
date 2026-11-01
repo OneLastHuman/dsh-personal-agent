@@ -1,7 +1,9 @@
-/** Overview page: pending Tickets requiring human action, active system problems, 24-hour flow counts, and Executor load. */
+/** Overview page: the flow of work by station, pending Tickets requiring human action, active system problems, 24-hour flow counts, and Executor load. */
 import type { ReactNode } from 'react'
+import type { OverviewView } from '../app/views/overview.ts'
 import { usePoll, type Problem } from './api.ts'
-import { Button, Icon } from './controls.tsx'
+import { Button, Dot, Icon, type DotState } from './controls.tsx'
+import { ticketMark } from './marks.ts'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { TicketLine } from './rows.tsx'
@@ -72,6 +74,7 @@ export function OverviewPage() {
     onClick={() => navigate(route)}>{t('details')}</button>
   return <>
     {error && <LoadState error={error} loading={false} />}
+    <Flow view={data} onChanged={reload} />
     <Section title={t('pendingTickets')} count={data.person.length}>
       {data.person.length ? <ul className="dt-list dt-cards">{data.person.map(ticket => <TicketLine key={ticket.id} ticket={ticket} question
         onChanged={reload} />)}</ul>
@@ -100,4 +103,58 @@ export function OverviewPage() {
       </div>}
     </Section>
   </>
+}
+
+/** Stations in reading order; the first two lead in from Triggers rather than holding Tickets. */
+const FLOW_ROWS = ['intake', 'eval', 'exec', 'deliver', 'ended'] as const
+type FlowRow = typeof FLOW_ROWS[number]
+/** A station's colour, which is also the colour of every Ticket resting in and every line entering it. */
+const FLOW_STATE: Record<FlowRow, DotState> = { intake: 'done', eval: 'ongoing', exec: 'ongoing', deliver: 'warning', ended: 'idle' }
+
+/**
+ * The flow: each open Ticket rests in the station its stage belongs to, so the operator reads progress rather than a pile
+ * of rows. A station's figure is the length of the list it shows, and the closed section names its own window.
+ */
+function Flow({ view, onChanged }: { view: OverviewView; onChanged: () => Promise<void> }) {
+  const { t, navigate } = usePanel()
+  // A service older than this page sends no stations; the flow then shows nothing rather than failing the whole overview.
+  const stations = view.stations?.stations ?? []
+  const hold = (row: FlowRow) => stations.find(item => item.station === row)
+  const exec = hold('exec'), deliver = hold('deliver'), ended = hold('ended')
+  const waiting = (exec?.waiting ?? 0) + (deliver?.waiting ?? 0)
+  const detail = (row: FlowRow): ReactNode => {
+    switch (row) {
+      case 'intake': return t('flowIntakeDetail', { received: view.flow.received, filtered: view.flow.filtered })
+      case 'eval': return view.flow.evaluating ? t('flowEvalDetail', { count: view.flow.evaluating }) : t('flowEvalNone')
+      case 'exec': return t('flowExecutorDetail', { running: view.executor.running, max: view.executor.maxWorkers })
+      case 'deliver': return waiting ? t('flowWaitingCount', { count: deliver?.waiting ?? 0 }) : t('flowNoneWaiting')
+      case 'ended': return t('flowEndedDetail', { count: view.stations?.ended ?? 0 })
+    }
+  }
+  // The lead-in rows only summarise; a station that holds Tickets lists them, and each opens its Ticket page.
+  const tickets = (row: FlowRow) => row === 'intake' || row === 'eval' ? [] : hold(row)?.tickets ?? []
+  return <section className="dt-section dt-flow">
+    <h2 className="dt-section-title"><span className="dt-section-name">{t('flowTitle')}</span>
+      {waiting > 0 && <span className="dt-count">{t('flowWaitingCount', { count: waiting })}</span>}</h2>
+    <ol className="dt-flow-rows">
+      {FLOW_ROWS.map(row => {
+        const held = tickets(row)
+        return <li key={row} className="dt-flow-row" data-station={row} data-state={FLOW_STATE[row]}>
+          <span className="dt-flow-label"><Dot state={FLOW_STATE[row]} />{t(`station.${row}`)}</span>
+          <div className="dt-flow-body">
+            {held.length ? <div className="dt-flow-tokens">{held.map(ticket => {
+              const { dot } = ticketMark(t, ticket)
+              return <button key={ticket.id} type="button" className="dt-token" data-state={dot} title={ticket.title}
+                onClick={() => navigate({ page: 'execution', id: ticket.id })}>
+                {dot === 'ongoing' && <Dot state="ongoing" />}<span className="dt-token-name">{ticket.title}</span>
+              </button>
+            })}</div> : <span className="dt-flow-empty">{row === 'intake' || row === 'eval' ? detail(row)
+              : t('flowEmptyStation')}</span>}
+          </div>
+          <span className="dt-flow-detail">{row === 'intake' || row === 'eval' ? null : detail(row)}</span>
+        </li>
+      })}
+    </ol>
+    <Hint>{t('flowIntro')}</Hint>
+  </section>
 }

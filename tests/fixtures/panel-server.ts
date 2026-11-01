@@ -198,7 +198,21 @@ const overviewView = (): ApiResponse<'GET overview'> => {
     person: server.person, executor: { running: 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers, idle: 1 },
     flow: { received: 12, filtered: 2, triggers: 10, judged: 5, accepted: 1, evaluating: 0,
       dropped: server.dropped.filter(item => item.dropped.at >= dayAgo()).length },
+    stations: stationsView(),
     policyVersion: 'abcdef1234567890',
+  }
+}
+/** Groups the fake Tickets by station the way the host does, so a test can drive the flow from `tickets.open`. */
+function stationsView(): NonNullable<ApiResponse<'GET overview'>['stations']> {
+  const station = (row: TicketRow) => row.stage === 'ended' ? 'ended'
+    : row.stage === 'person' && row.action === 'review' ? 'deliver' : 'exec'
+  const rows = [...server.tickets.open, ...server.tickets.ended]
+  return {
+    stations: (['exec', 'deliver', 'ended'] as const).map(name => {
+      const held = rows.filter(row => station(row) === name)
+      return { station: name, tickets: held, waiting: held.filter(row => row.stage === 'person').length }
+    }),
+    ended: rows.filter(row => station(row) === 'ended').length,
   }
 }
 export const acceptDecision = (): NonNullable<TicketPageView['decision']> => ({ id: 'd1', kind: 'accept', outcome: 'accept',
