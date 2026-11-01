@@ -245,7 +245,12 @@ export type TicketInput =
     /** The Assignment it was last delivered to. */
     deliveredTo?: string
     /** When an earlier version handed it to the worker. */
-    deliveredAt?: string }
+    deliveredAt?: string
+    /**
+     * When a worker met this message, which a person waits on, but could not take it up in its own steps. The host then makes
+     * sure the person hears of the work on this ticket, so that no message a person wrote is read and left unanswered.
+     */
+    metAt?: string }
   /** The Policy changed in a way that bears on the ticket, as `effect` says; Inputs written before effects have none. */
   | { id: string; kind: 'policy-changed'; from: string; to: string; at: string; effect?: PolicyEffect }
   /** A Decision reopened the ticket; written before ended tickets resumed on their own. */

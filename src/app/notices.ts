@@ -1,6 +1,6 @@
 /** Formats background notices and steering relays delivered to the main Session via the effect queue. */
 import { randomUUID } from 'node:crypto'
-import { followupOwners, key, liveTicket, type DomainEvent, type Ticket, type WorkerReport } from '../core/index.ts'
+import { followupOwners, key, liveTicket, type DomainEvent, type Ticket, type TicketInput, type WorkerReport } from '../core/index.ts'
 import { triggerMessage } from '../executor/dsh.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import { repliedTo } from './links.ts'
@@ -35,6 +35,14 @@ function brief(ticket: Ticket) {
   const { preview: _preview, ...card } = ticketCard(ticket)
   return card
 }
+/**
+ * The person's message on `ticket` that its worker read without taking it up, oldest first, and whose answer the host owes. Its
+ * `metAt` is cleared once its author is answered, by the main Session's note or the reply a report allows.
+ */
+export const owed = (ticket: Ticket): Extract<TicketInput, { kind: 'trigger' }> | undefined => ticket.inputs
+  .find(input => input.kind === 'trigger' && !!input.human && !input.context && !!input.metAt) as Extract<TicketInput, { kind: 'trigger' }> | undefined
+/** Whether the host owes the person who wrote a message on `ticket` an answer (see `owed`). */
+export const met = (ticket: Ticket): boolean => owed(ticket) !== undefined
 /** Creates a one-off receipt notice with a unique `name` key so repeated occurrences of the same event are each delivered instead of coalescing. */
 export const receiptNotice = (value: Record<string, unknown>, summary: string): Notice => [key('receipt', randomUUID()), value, summary]
 /** Builds a notice that a person removed a thread's subscriptions at `at`; a later removal of the same thread replaces an unsent waiting notice. */
@@ -139,6 +147,28 @@ export function reportRelay(ticket: Ticket,
 export const PROGRESS_QUIET_MS = 60 * 60_000
 /** How long after a candidate reaches the main Session its accept may still promise its person an answer. */
 export const PROMISE_MS = 3 * 60_000
+/**
+ * What a worker is told when it reads a person's message that its own steps cannot take up: its turn ends with one report, and
+ * the host then tells the person how the work stands, so it neither stops the work nor promises an outcome it has not reached.
+ */
+export const MET_NOTE = 'A status question, a request to go on or a request within this work is answered by continuing the work. '
+  + 'Otherwise end this turn with the report it deserves: the host then tells its person how the work stands, and no message like it ends the work.'
+/**
+ * The notice that makes sure the person whose message on a working ticket no report took up hears one sentence about the work: the
+ * main Session says where it stands, then tells the ticket with a note, which answers them for good.
+ * @param ticket the ticket the person's message reached.
+ * @param input the person's message, which its worker read without taking it up.
+ * @returns the notice's name and body; its name names the input, so each message a person wrote is answered once.
+ */
+export function progressCheckNotice(ticket: Ticket, input: Extract<TicketInput, { kind: 'trigger' }>): [name: string, value: Record<string, unknown>, summary: string] {
+  return [`progress-check:${input.id}`, { kind: 'progress_check', ticket: brief(ticket), trigger_id: input.triggerId, since: ticket.updatedAt,
+    silent_since: input.metAt ?? input.at,
+    ask: `This person has no word on the work since the message ${input.triggerId}, which its worker read without answering it. Say in one `
+      + `short sentence where the work stands, without asking the worker for a report: state may remain progress, with reply_to_trigger_id `
+      + `${input.triggerId} and no answer, and note what the last report changed. Then tell the ticket with orchestrator_ticket_note that you `
+      + `wrote to the person, which is what answers them.` },
+  `Ticket ${ticket.id}: the person who wrote ${input.triggerId} waits for a word`]
+}
 /**
  * The notice that lets the main Session keep a promise the communication contract otherwise forbids: it answered a person and
  * started work for them without saying when the outcome comes. It may send one sentence saying so, or take other work; either

@@ -15,7 +15,7 @@ import { Later, type Effects } from '../app/effects.ts'
 import { executionRoot, type Variable } from '../app/execution-environment.ts'
 import type { Sessions } from '../app/sessions.ts'
 import { WorktreeNameSchema } from '../app/assessment.ts'
-import { resultRelay } from '../app/notices.ts'
+import { MET_NOTE, resultRelay } from '../app/notices.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
 
@@ -70,7 +70,7 @@ export interface ExecutorHost {
   readonly machine: Pick<Machine, 'stateDir'>
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
-  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds' | 'turnStarted' | 'turnAnswered'>
+  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds' | 'turnStarted' | 'turnAnswered' | 'turnReported'>
   closing(): boolean
   /** Whether processing is paused, which holds launches and input deliveries. */
   paused(): boolean
@@ -155,13 +155,24 @@ export const inputResource = (ticketId: string, inputId: string): string => `tic
  */
 export function inputMessage(input: TicketInput, trigger?: object): string | undefined {
   // Mark triggers arriving on context-only subscriptions so the worker knows they are not addressed to the ticket.
-  if (input.kind === 'trigger') return JSON.stringify({ ...trigger ?? { trigger_id: input.triggerId, read: `trigger/${input.triggerId}` },
-    ...input.context ? { context: true } : {} })
+  if (input.kind === 'trigger') {
+    // A person's follow-up also says what becomes of it when the worker's own steps cannot take it up (see `MET_NOTE`).
+    const met = input.human && !input.context ? metNote(input.id) : undefined
+    return JSON.stringify({ ...trigger ?? { trigger_id: input.triggerId, read: `trigger/${input.triggerId}` },
+      ...input.context ? { context: true } : {}, ...met ? { met: met } : {} })
+  }
   if (input.kind === 'policy-changed') return policyMessage(input.effect)
   if (input.kind === 'resumed') return RESUMED
   if (input.kind === 'note') return `Note from the orchestrator, for context only: ${input.text}`
   return input.kind === 'text' ? input.text : undefined
 }
+/**
+ * What a person's follow-up tells its worker, named by its Input id: a status question, a request to go on or a request within
+ * the work is answered by continuing it; otherwise the worker ends its turn with the report it deserves and the host answers the
+ * person, which the worker says with `orchestrator_report`'s `met` naming this Input.
+ */
+export const metNote = (inputId: string): { case: string; otherwise: string; report: string } => ({
+  case: 'A person wrote this on the ticket\'s thread; your steps cannot take it up.', otherwise: MET_NOTE, report: `met: ${inputId}` })
 /**
  * Tracks active and starting worker sessions against the configured concurrency limit: a ticket holds a slot while its
  * worker's turn runs, while its shell jobs or subagents run after that turn ended, and while a launch or wake starts that worker.
@@ -645,7 +656,11 @@ export class DshExecutor implements Executor {
     finally { clearTimeout(timer); if (this.settling.get(ticket.id) === look) this.settling.delete(ticket.id) }
     const current = live()
     if (this.host.closing() || look.signal.aborted || (!quiet && !limit.signal.aborted) || !current || this.resuming.has(idle.id)) return
-    if (quiet) this.host.engine.turnEnded(ticket.id, idle.id)
+    if (quiet) {
+      this.host.engine.turnEnded(ticket.id, idle.id)
+      // A person's message this worker read without taking it up is the host's to answer, once the turn that read it ended.
+      this.host.sessions.turnReported(ticket.id)
+    }
     let stopped = ''
     if (!quiet) {
       // Its shell jobs that ran past the limit are killed, which it is told at its next turn; its subagents, whose stop would

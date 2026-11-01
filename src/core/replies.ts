@@ -84,11 +84,21 @@ export class Replies extends EnginePart {
     const channel = request.purpose === 'answer' ? trigger!.channel : asker?.channel ?? (ticket ? this.sourceChannel(ticket) : undefined)
     if (!channel) throw new UserError('noChannel')
     this.options.outbox.send({ id, channel, text: request.text, kind: 'reply', ...ticket ? { ticketId: ticket.id } : {} })
+    // A result or an answer speaks for the ticket, which then owes nobody the word its worker left to the host.
+    if (ticket && request.purpose !== 'attention') this.settle(ticket)
     if (request.purpose === 'answer' && ticket && trigger && ticket.answers?.includes(trigger.id)) {
       ticket.answers = ticket.answers.filter(item => item !== trigger.id)
       this.repo.tickets.save(ticket)
     }
     return { id, status: this.options.outbox.status(id) ?? 'pending', reused: existing !== undefined }
+  }
+  /** A note the main Session writes to the ticket after answering its person says the answer is given; may run beside a command. */
+  settle(ticket: Ticket): void {
+    const current = this.repo.tickets.get(ticket.id)
+    if (!current) return
+    const owed = current.inputs.filter(input => input.kind === 'trigger' && !!input.metAt)
+    for (const input of owed) if (input.kind === 'trigger') delete input.metAt
+    if (owed.length) this.repo.tickets.save(current)
   }
   /** The conversation a ticket started in: its origin Trigger's Channel, else its first Channel. */
   private sourceChannel(ticket: Ticket): ChannelRef | undefined { return this.source(ticket)?.channel ?? ticket.channels[0] }

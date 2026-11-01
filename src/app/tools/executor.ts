@@ -11,9 +11,9 @@ import type { Sessions } from '../sessions.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 
 export interface ExecutorToolsHost {
-  readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
-  readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
-  readonly sessions: Pick<Sessions, 'relay' | 'notify' | 'turnAnswered'>
+  readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext' | 'inputsMet'>
+  readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic' | 'afterCommit'>
+  readonly sessions: Pick<Sessions, 'relay' | 'notify' | 'turnAnswered' | 'turnReported'>
   readonly resources: ResourceHost
   /** GitHub Source context whose pull-request rules govern claiming a reported PR. */
   readonly github: SourceContext
@@ -82,6 +82,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
         reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
+        met: z.string().optional().describe('With progress ending the turn: the person\'s message this worker could not take up in its own steps, named by the id the delivery gives as `met` or by its trigger_id; the host then answers that person. Omit when the progress itself answers the message.'),
       }).strict(),
       execute: async (args, signal) => {
         const current = host.store.tickets.get(ticketId)
@@ -100,8 +101,16 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
           const updated = host.engine.report(ticketId, report)
           const relay = reportRelay(updated, report) ?? (progress ? reportRelay(updated, { ...progress, state: 'progress' }) : undefined)
           if (relay) host.sessions.relay(relay.id, relay.text)
+          // A message the worker names as beyond its own steps waits for the host's own answer to its person, which it names by
+          // its Input id or by the trigger id of the delivery.
+          const named = args.met
+            ? updated.inputs.find(input => input.kind === 'trigger' && input.human && (input.id === args.met || input.triggerId === args.met))
+            : undefined
+          if (named?.kind === 'trigger') host.engine.inputsMet(ticketId, [named.triggerId])
           // A report a person can use, or a question for one, ends the hour this turn may stay silent for; a progress keeps it.
           if (args.state !== 'progress') host.sessions.turnAnswered(ticketId)
+          // A progress that does not itself reply to a message its worker read leaves the host to answer its author once the turn ends.
+          if (args.state === 'progress') host.store.afterCommit(() => host.sessions.turnReported(ticketId))
           const notification = relay ? 'orchestrator' : 'internal_only'
           return { reported: true, notification, ...(updated.attention ? { attention: updated.attention } : {}) }
         })

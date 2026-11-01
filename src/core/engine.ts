@@ -189,6 +189,14 @@ export class Engine {
   inputsRead(ticketId: string, inputIds: string[]): void {
     this.repo.atomic(() => { this.assignments.read(ticketId, inputIds) })
   }
+  /**
+   * The Executor's fact that a worker read the person's messages among `triggerIds` without taking them up in its own steps: the
+   * host then makes sure the person hears how the work on the ticket stands, so no message a person wrote goes unanswered.
+   * @throws UserError when the ticket is unknown.
+   */
+  inputsMet(ticketId: string, triggerIds: string[]): void {
+    this.repo.atomic(() => { this.assignments.met(ticketId, triggerIds) })
+  }
   /** The Executor's fact that a turn of the worker of the Assignment that runs the ticket ended, after a report too. */
   turnEnded(ticketId: string, assignmentId: string): void {
     this.repo.atomic(() => { this.assignments.turnEnded(ticketId, assignmentId) })
@@ -218,7 +226,16 @@ export class Engine {
    * A fact the main Session gives an open ticket's Executor: see `Tickets.note`.
    * @throws UserError when the ticket is unknown or has ended.
    */
-  note(ticketId: string, text: string): Ticket { return this.repo.atomic(() => this.tickets.note(ticketId, text)) }
+  note(ticketId: string, text: string): Ticket {
+    return this.repo.atomic(() => {
+      const ticket = this.tickets.note(ticketId, text)
+      // A note is what the main Session writes after answering the person a worker left to it, so it settles that answer.
+      this.replies.settle(ticket)
+      const settled = this.repo.tickets.get(ticketId)
+      if (!settled) throw new UserError('unknownTicket')
+      return settled
+    })
+  }
   /**
    * An Executor's hand-back of a message that reached its ticket but asks for more than it: see `Evals.handback`.
    * @returns whether it was queued for Eval: false while another ticket still decides it, and for one this ticket did not decide (see `Evals.handback`).
@@ -266,5 +283,5 @@ export type EngineForPeople = Pick<Engine, 'stopTicket' | 'retryTicket' | 'reeva
 /** What Settings tells the Engine. */
 export type EngineForSettings = Pick<Engine, 'policyChanged'>
 /** What the Executor tells the Engine, and what its workers ask of it. */
-export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
+export type EngineForExecutor = Pick<Engine, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'inputsMet' | 'turnEnded' | 'deliveryFailed'
   | 'assignmentInterrupted' | 'report' | 'markUnrelated' | 'handback' | 'followForContext' | 'reply'>

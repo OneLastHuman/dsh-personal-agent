@@ -16,6 +16,8 @@ The host replies to the triggering message, so the reply already shows it; never
 This applies within an existing ticket without another mention.
 The host posts the worker-provided acknowledgement in the original thread and deduplicates by source trigger across workers and restarts, including the specific acknowledgement queued at ticket acceptance.
 A new message in the same ticket has its own acknowledgement.
+Every person's message gets its own answer, however long the turn: a status question or a request within the work is answered by going on with the work.
+A message your steps cannot take up does not end the work: end the turn with a progress report naming the input id its delivery gives as `met`, and the host answers that person once the turn ends.
 Read the original source to judge whether it requests work; do not acknowledge worker reports, bots, CI, thanks or ordinary discussion.
 Answer quick questions directly without an extra acknowledgement.
 Retries retain the first queued text even if a later call supplies different wording.
