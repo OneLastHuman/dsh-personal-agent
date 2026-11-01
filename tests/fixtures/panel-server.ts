@@ -56,7 +56,19 @@ export function trigger(id: string, at: string, { disposition, ...fields }: Trig
     url: undefined, threads: ['feishu:oc_1:om_root'], ...fields,
     disposition: { queued: false, evaluating: false, delivered: false, filtered: undefined, fanout: [], handbacks: [], decision: undefined,
       ...disposition } }
-  return { ...row, actions: { requeue: requeueable(row) } }
+  return { ...row, actions: { requeue: requeueable(row) }, trail: trailOf(row, fields.trail) }
+}
+/** The fake route a Trigger took, built the way the host builds it, so a test can drive the trail from its disposition. */
+function trailOf(row: { disposition: TriggerRow['disposition'] }, given: TriggerRow['trail'] | undefined): TriggerRow['trail'] {
+  if (given) return given
+  const d = row.disposition
+  if (d.filtered) return [{ step: 'filtered', reason: d.filtered }]
+  const steps: TriggerRow['trail'] = d.fanout.map(ticketId => ({ step: 'reached', ticketId, context: false }))
+  for (const item of d.handbacks) steps.push({ step: 'handback', ticketId: item.ticketId, reason: item.reason, at: item.at })
+  if (d.evaluating) steps.push({ step: 'evaluating' })
+  if (d.queued) steps.push({ step: 'queued' })
+  if (!d.delivered && d.decision) steps.push({ step: 'decision', outcome: d.decision.outcome })
+  return steps
 }
 const requeueable = ({ human, disposition: d }: Pick<TriggerRow, 'human' | 'disposition'>) => human && !d.queued && !d.evaluating
   && (!!d.filtered || d.decision?.outcome === 'unavailable' || d.delivered || (d.fanout.length > 0 && !d.decision))
@@ -223,6 +235,7 @@ const ticketDetail = (): TicketPageView => ({
   mandate: { strength: 'explicit', policyVersion: 'abcdef1234567890', basis: { via: 'addressed', sender: 'Alice', addressed: 'mention' },
     actor: actor('feishu', MEMBER), scope: '修复登录页回归' },
   basis: { facts: [{ name: 'sender', value: 'Alice' }, { name: 'addressed', value: 'mention' }], legacy: false },
+  timing: { working: 7 * 60_000, waiting: 11 * 60_000, since: '2026-09-22T00:00:00Z', ended: false },
   environment: [{ key: 'DSH_SUPERAGENT_DIR', value: '/w/t1', description: { zh: '执行目录', en: 'Directory' }, owner: 'executor' },
     { key: 'DSH_SUPERAGENT_GITHUB_NUMBER', value: '', description: { zh: '编号', en: 'Number' }, owner: 'github' }],
   channels: [{ source: 'feishu', url: 'https://applink.feishu.cn/client/chat/open?openChatId=oc_1', label: { zh: '飞书消息',

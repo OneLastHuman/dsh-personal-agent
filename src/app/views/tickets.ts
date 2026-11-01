@@ -81,7 +81,27 @@ export function ticketDetail(host: ViewHost, id: string) {
         ? { turnEndedAt: assignment.report.at } : {} })),
     inputs: ticket.inputs.slice().reverse().map(input),
     // Threads followed for context only (e.g., related issues) grant no authority and are marked with `context: true`.
+    timing: ticketTiming(ticket),
     threads: view.threadsOf(id).map(thread => ({ ...threadSummary(view, thread),
       ...thread.context?.includes(id) ? { context: true as const } : {} })) }
 }
 export type TicketDetailView = NonNullable<ReturnType<typeof ticketDetail>>
+
+/**
+ * How long a Ticket's Assignments spent running, and how long it spent waiting, in milliseconds.
+ * Work runs from an Assignment's `startedAt` to its `endedAt`, or to now while it is still running. Waiting is the rest of
+ * the Ticket's life: created to now, minus that work. An ended Ticket's life stops at its end, so it waits for nobody once
+ * it is over.
+ */
+export function ticketTiming(ticket: Ticket, now = Date.now()) {
+  const span = (since: string, until: string | undefined) => {
+    const from = Date.parse(since), to = until === undefined ? now : Date.parse(until)
+    // An unparseable stamp counts as no time rather than a wild one.
+    return Number.isFinite(from) && Number.isFinite(to) && to > from ? to - from : 0
+  }
+  const working = ticket.assignments.reduce((sum, assignment) => sum + (assignment.startedAt ? span(assignment.startedAt,
+    assignment.endedAt) : 0), 0)
+  const life = span(ticket.createdAt, ticket.ended?.at)
+  const running = Math.min(working, life)
+  return { working: running, waiting: Math.max(0, life - running), since: ticket.createdAt, ended: !!ticket.ended }
+}

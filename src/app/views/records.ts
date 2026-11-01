@@ -96,14 +96,54 @@ export function triggerView(view: Snapshot, trigger: Trigger, threadDecisions?: 
   const unjudged = !!disposition?.filtered || decision?.kind === 'unavailable' || delivered || (!!disposition?.fanout.length && !decided)
     || (!!decision && !decided)
   const requeue = trigger.human && !queued && !evaluating && unjudged
+  // Read each handed-back Ticket once, and reuse that title for the trail rather than reading it again.
+  const named = new Map<string, string>()
+  const title = (id: string) => { if (!named.has(id)) named.set(id, store.tickets.get(id)?.title ?? id); return named.get(id)! }
+  const handedBack = (disposition?.handbacks ?? []).map(item => ({ ...item, title: title(item.ticketId) }))
   return { id: trigger.id, source: trigger.source, actor: view.actor(trigger.actor, trigger.human), human: trigger.human, at: trigger.at,
     text: plain(readable(trigger.text), true),
     preview: preview(trigger.text), url: trigger.url, threads: trigger.threads.map(threadKey), actions: { requeue },
+    // The route it took, in order: what the Source did with it, then what each Ticket did, then what decided it.
+    trail: triggerTrail({ filtered: disposition?.filtered, queued, evaluating, delivered,
+      reached: (disposition?.fanout ?? []).filter(id => !(disposition?.context ?? []).includes(id)),
+      context: disposition?.context ?? [], handbacks: handedBack, acked: disposition?.acked ?? [],
+      decision: decision ? { outcome: outcomeOf(decision) } : undefined }),
     disposition: { queued, evaluating, delivered, filtered: disposition?.filtered, fanout: disposition?.fanout ?? [],
-      handbacks: (disposition?.handbacks ?? []).map(item => ({ ...item,
-        title: store.tickets.get(item.ticketId)?.title ?? item.ticketId })),
+      handbacks: handedBack,
       decision: decision ? { id: decision.id, outcome: outcomeOf(decision), reason: decision.reason, ticketId: decision.ticketId }
         : undefined } }
+}
+/**
+ * One step of a Trigger's route. Each step is a fact already recorded, never a guess: the Source filtering it, an Eval
+ * holding it, the Tickets it reached, those that handed it back, and what it finally became.
+ */
+export type TrailStep = { step: 'filtered'; reason: { code: string } }
+  | { step: 'reached'; ticketId: string; context: boolean }
+  | { step: 'handback'; ticketId: string; reason: string; at: string }
+  | { step: 'acked'; ticketId: string }
+  | { step: 'delivered'; ticketId: string }
+  | { step: 'queued' } | { step: 'evaluating' }
+  | { step: 'decision'; outcome: DecisionOutcome }
+/**
+ * The route a Trigger took through intake, in the order the rules apply it: the Source may have filtered it, an Eval may
+ * hold it, a Ticket may own it or have handed it back, and a Decision may have settled it.
+ */
+function triggerTrail(facts: { filtered?: { code: string }; queued: boolean; evaluating: boolean
+  delivered: boolean
+  reached: string[]; context: string[]; handbacks: { ticketId: string; reason: string; at: string }[]
+  acked: string[]; decision?: { outcome: DecisionOutcome } }): TrailStep[] {
+  if (facts.filtered) return [{ step: 'filtered', reason: facts.filtered }]
+  const steps: TrailStep[] = []
+  for (const ticketId of facts.reached) steps.push({ step: 'reached', ticketId, context: false })
+  // A context-only Ticket is told, but nothing about it is that Ticket's to decide.
+  for (const ticketId of facts.context) steps.push({ step: 'reached', ticketId, context: true })
+  for (const item of facts.handbacks) steps.push({ step: 'handback', ticketId: item.ticketId, reason: item.reason, at: item.at })
+  for (const ticketId of facts.acked) steps.push({ step: 'acked', ticketId })
+  if (facts.evaluating) steps.push({ step: 'evaluating' })
+  // A Ticket that owns it decides it, so a Decision only follows when no Ticket claimed it.
+  if (facts.queued) steps.push({ step: 'queued' })
+  if (!facts.delivered && facts.decision) steps.push({ step: 'decision', outcome: facts.decision.outcome })
+  return steps
 }
 export type TriggerView = ReturnType<typeof triggerView>
 /** Single-line summary of why a ticket in the `person` stage is waiting on human action (omitted once answered and back with the Executor). */
