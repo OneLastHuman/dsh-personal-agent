@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务路由 · 设计方案</title>
+<style>
+  :root {
+    --bg: #0a0c11;
+    --panel: #0e1118;
+    --panel-2: #131825;
+    --line: rgba(140,170,255,.10);
+    --line-2: rgba(140,170,255,.06);
+    --grid: rgba(120,160,255,.045);
+    --ink: #e9edf5;
+    --ink-2: #aeb7c6;
+    --ink-3: #7a8494;
+    --ink-4: #4d5666;
+    --ok: #35d58c;
+    --run: #5b9dff;
+    --wait: #ffb340;
+    --bad: #ff5b52;
+    --purple: #a78bfa;
+    --idle: #6a7484;
+    --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 14px/1.55 var(--font); -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(900px 460px at 18% -120px, rgba(91,157,255,.10), transparent 68%),
+      radial-gradient(700px 380px at 88% 8%, rgba(167,139,250,.07), transparent 70%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: auto, auto, 34px 34px, 34px 34px;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 46px 30px 120px; }
+  h1 { font: 500 11px/1 var(--mono); letter-spacing: .14em; color: var(--ink-4); margin: 0 0 20px; }
+  h2 { font-size: 27px; font-weight: 600; margin: 0 0 10px; letter-spacing: -.02em; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0; }
+  h4 { margin: 0 0 10px; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; color: var(--ink-4); }
+  p { margin: 0; }
+  .lede { color: var(--ink-2); max-width: 68ch; font-size: 14px; }
+  .muted { color: var(--ink-3); }
+  .small { font-size: 12px; }
+  .mono { font-family: var(--mono); }
+  .sec { margin-top: 60px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .sec-no { font: 500 10.5px/1 var(--mono); color: #4d7fd6; letter-spacing: .1em; }
+  .sec-lede { margin-bottom: 20px; }
+
+  .mast { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+  .mast-meta { display: flex; gap: 26px; flex: none; }
+  .mast-meta div { display: flex; flex-direction: column; }
+  .mast-meta dt { font: 500 9.5px/1.7 var(--mono); letter-spacing: .1em; color: var(--ink-4); }
+  .mast-meta dd { margin: 0; font: 500 16px/1.3 var(--mono); }
+
+  /* ── panel chrome ── */
+  .console {
+    border-radius: 15px; overflow: hidden; position: relative;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(20,26,38,.94), rgba(11,14,20,.98));
+    box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 28px 64px -28px rgba(0,0,0,.95);
+  }
+  .console::before {
+    content: ""; position: absolute; inset: 0 0 auto; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(91,157,255,.7), rgba(167,139,250,.45), transparent);
+  }
+  .cbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line-2); background: rgba(255,255,255,.02); }
+  .cbar .lamp { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 9px var(--ok); flex: none; }
+  .cbar .path { font: 11px/1 var(--mono); color: var(--ink-4); }
+  .cbar .path b { color: var(--ink-3); font-weight: 400; }
+  .cbar .right { margin-left: auto; font: 10.5px/1 var(--mono); color: var(--ink-4); }
+  .ctabs { display: flex; gap: 1px; padding: 0 14px; border-bottom: 1px solid var(--line-2); background: rgba(0,0,0,.14); }
+  .ctab { padding: 9px 12px; font-size: 12.5px; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ctab.on { color: var(--ink); border-bottom-color: var(--run); box-shadow: 0 1px 14px -2px rgba(91,157,255,.5); }
+  .cbody { padding: 18px 18px 20px; }
+
+  /* ── routing graph (pure SVG) ── */
+  .graph { width: 100%; }
+  .graph svg { display: block; width: 100%; height: auto; }
+  .graph text { font-family: var(--font); font-size: 12.5px; fill: var(--ink); }
+  .graph .t-mono { font-family: var(--mono); font-size: 10px; fill: var(--ink-4); letter-spacing: .03em; }
+  .graph .t-lbl { font-family: var(--mono); font-size: 11px; fill: var(--ink-3); }
+  .graph .t-inv { font-family: var(--mono); font-size: 11.5px; fill: #ffe4b3; }
+  .graph .t-node { font-size: 12.5px; fill: var(--ink); }
+  .graph .t-dim { font-size: 11px; fill: var(--ink-4); }
+  .graph .t-qa { font-size: 11px; fill: #cfe0ff; }
+  .graph .t-title { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; fill: var(--ink-4); }
+  .flow { animation: dash 1.2s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset: -26; } }
+  @media (prefers-reduced-motion: reduce) { .flow { animation: none; } }
+
+  /* ── cards ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { border: 1px solid var(--line); border-radius: 13px; padding: 17px 19px; background: rgba(255,255,255,.02); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 9px 16px; font-size: 12.5px; }
+  .kv dt { color: var(--ink-4); font-family: var(--mono); font-size: 10.5px; padding-top: 1px; }
+  .kv dd { margin: 0; color: var(--ink-2); }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 6px; font: 500 11px/1 var(--mono); border: 1px solid; }
+  .pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
+  .pill.ok { color: var(--ok); border-color: rgba(53,213,140,.3); background: rgba(53,213,140,.1); }
+  .pill.wait { color: var(--wait); border-color: rgba(255,179,64,.3); background: rgba(255,179,64,.1); }
+  .pill.run { color: var(--run); border-color: rgba(91,157,255,.3); background: rgba(91,157,255,.1); }
+  .pill.idle { color: var(--ink-3); border-color: var(--line); background: rgba(255,255,255,.04); }
+  .pill.io { color: var(--purple); border-color: rgba(167,139,250,.3); background: rgba(167,139,250,.1); }
+
+  .sw { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+  .swc { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .swc .blk { height: 34px; }
+  .swc .mt { padding: 7px 9px; }
+  .swc .nm { font: 500 11.5px/1.4 var(--mono); }
+  .swc .hx { font: 10px/1.5 var(--mono); color: var(--ink-4); }
+
+  ol.moves { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 11px; counter-reset: m; }
+  ol.moves li { display: grid; grid-template-columns: 20px 1fr; gap: 10px; font-size: 13px; color: var(--ink-2); }
+  ol.moves li::before { counter-increment: m; content: counter(m); font: 500 10px/19px var(--mono); color: #4d7fd6; text-align: right; }
+  ol.moves b { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 900px) {
+    .wrap { padding: 26px 14px 80px; }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+    .mast { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .graph { overflow-x: auto; }
+    .graph svg { min-width: 780px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>// superagent-panel · task-routing</h1>
+<header class="mast">
+  <div>
+    <h2>任务路由</h2>
+    <p class="lede">一条消息进来之后，系统要做四道判断才决定它归谁：范围筛掉它吗、是不是人发的、落在哪些讨论串上、有没有 Ticket 认领。这四步决定了它是变成 Ticket、交给 Eval、还是根本没进来。</p>
+  </div>
+  <dl class="mast-meta">
+    <div><dt>SOURCE</dt><dd>intake.ts</dd></div>
+    <div><dt>模型</dt><dd>model.ts</dd></div>
+    <div><dt>决策</dt><dd>3</dd></div>
+  </dl>
+</header>
+
+<!-- ══ 1 · THE ROUTING PIPELINE ══════════════════════════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">01</span><h3>一条消息的四道岔</h3></div>
+  <p class="sec-lede lede">中间的每个菱形都是一次真实判断，右侧写着代码里的条件名。一条路走完，消息就定了归属；不会再回头。</p>
+
+  <div class="console">
+    <div class="cbar">
+      <span class="lamp"></span>
+      <span class="path"><b>superagent</b> / routing / intake</span>
+      <span class="right">LIVE · 24h · 37 messages</span>
+    </div>
+    <div class="ctabs"><span class="ctab on">概览</span><span class="ctab">来源</span><span class="ctab">对话</span><span class="ctab">评估</span><span class="ctab">执行</span><span class="ctab">设置</span></div>
+    <div class="cbody">
+
+      <div class="graph">
+        <svg viewBox="0 0 1120 580" role="img" aria-label="任务路由：消息经范围筛选、订阅匹配、认领判断，最终到达 Ticket、评估或被丢弃">
+          <defs>
+            <marker id="ar" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#5b9dff"/></marker>
+            <marker id="ag" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#35d58c"/></marker>
+            <marker id="ay" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#ffb340"/></marker>
+            <marker id="ax" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#6a7484"/></marker>
+          </defs>
+
+          <text x="16" y="20" class="t-title">SOURCE</text>
+          <line x1="16" y1="28" x2="1104" y2="28" stroke="rgba(140,170,255,.08)"/>
+          <text x="16" y="196" class="t-title">ROUTE</text>
+          <line x1="16" y1="204" x2="1104" y2="204" stroke="rgba(140,170,255,.08)"/>
+
+          <!-- 起点 -->
+          <rect x="34" y="56" width="200" height="54" rx="8" fill="rgba(255,255,255,.035)" stroke="rgba(140,170,255,.20)"/>
+          <text x="48" y="79" class="t-node">GitHub 评论 #128</text>
+          <text x="48" y="97" class="t-dim">dana · 说：日期只显示到天</text>
+
+          <!-- ① 范围筛选 -->
+          <path d="M234 83 H286" fill="none" stroke="rgba(91,157,255,.6)" stroke-width="1.5" marker-end="url(#ar)"/>
+          <path d="M366 44 L446 83 L366 122 L286 83 Z" fill="rgba(91,157,255,.10)" stroke="rgba(91,157,255,.5)"/>
+          <text x="366" y="80" text-anchor="middle" class="t-qa">在监听范围？</text>
+          <text x="366" y="97" text-anchor="middle" class="t-mono">scope.listened</text>
+
+          <!-- 否 → 丢弃 -->
+          <path d="M366 122 V228" fill="none" stroke="rgba(106,116,132,.5)" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#ax)"/>
+          <text x="392" y="150" class="t-mono" fill="#6a7484">否 · 来源没在监听</text>
+          <rect x="286" y="228" width="200" height="42" rx="8" fill="rgba(106,116,132,.10)" stroke="rgba(106,116,132,.35)" stroke-dasharray="3 3"/>
+          <text x="299" y="246" class="t-dim">丢弃</text>
+          <text x="299" y="262" class="t-mono">disposition.filtered</text>
+
+          <!-- ② 人还是机器 -->
+          <path d="M446 83 H498" fill="none" stroke="rgba(91,157,255,.6)" stroke-width="1.5" marker-end="url(#ar)"/>
+          <path d="M578 44 L658 83 L578 122 L498 83 Z" fill="rgba(91,157,255,.10)" stroke="rgba(91,157,255,.5)"/>
+          <text x="578" y="80" text-anchor="middle" class="t-qa">人发的？</text>
+          <text x="578" y="97" text-anchor="middle" class="t-mono">trigger.human</text>
+
+          <!-- ③ 订阅匹配 -->
+          <path d="M658 83 H710" fill="none" stroke="rgba(91,157,255,.6)" stroke-width="1.5" marker-end="url(#ar)"/>
+          <rect x="710" y="50" width="206" height="66" rx="8" fill="rgba(167,139,250,.08)" stroke="rgba(167,139,250,.35)"/>
+          <text x="724" y="73" class="t-node">匹配订阅的讨论串</text>
+          <text x="724" y="91" class="t-mono" fill="#a78bfa">thread.subscriptions[]</text>
+          <text x="724" y="107" class="t-dim">命中 0 个、1 个或多个</text>
+
+          <!-- ④ 认领判断 -->
+          <path d="M916 83 H968" fill="none" stroke="rgba(91,157,255,.6)" stroke-width="1.5" marker-end="url(#ar)"/>
+          <path d="M1046 44 L1114 83 L1046 122 L978 83 Z" fill="rgba(255,179,64,.10)" stroke="rgba(255,179,64,.5)"/>
+          <text x="1046" y="79" text-anchor="middle" class="t-qa">有人认领？</text>
+          <text x="1046" y="96" text-anchor="middle" class="t-mono">followupOwners</text>
+
+          <!-- ④ 是 → 投递（先降到第二行，再向左） -->
+          <path d="M1012 122 V150 Q1012 162 1000 162 H872" fill="none" stroke="rgba(53,213,140,.62)" stroke-width="1.6" marker-end="url(#ag)"/>
+          <text x="1024" y="142" class="t-mono" fill="#35d58c">是</text>
+          <rect x="610" y="141" width="262" height="42" rx="8" fill="rgba(53,213,140,.10)" stroke="rgba(53,213,140,.45)"/>
+          <text x="624" y="160" class="t-node">投递给 Ticket</text>
+          <text x="624" y="175" class="t-mono" fill="rgba(53,213,140,.9)">tickets.addInput → wake</text>
+
+          <!-- ④ 否 → 交给评估 -->
+          <path d="M1046 122 V232 Q1046 244 1034 244 H872" fill="none" stroke="rgba(91,157,255,.62)" stroke-width="1.6" marker-end="url(#ar)"/>
+          <text x="1058" y="196" class="t-mono">否</text>
+          <rect x="610" y="223" width="262" height="42" rx="8" fill="rgba(91,157,255,.10)" stroke="rgba(91,157,255,.45)"/>
+          <text x="624" y="242" class="t-node">交给评估</text>
+          <text x="624" y="257" class="t-mono" fill="rgba(91,157,255,.9)">queueForEval</text>
+
+          <!-- 评估结果：accept 回流到投递（不走回环曲线，改画一条直下标注） -->
+          <path d="M610 244 H574 Q562 244 562 232 V173 Q562 162 574 162 H610"
+                fill="none" stroke="rgba(53,213,140,.42)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#ag)"/>
+          <text x="196" y="150" class="t-mono" fill="#8fb4ff">accept</text>
+          <text x="196" y="166" class="t-mono" fill="#8fb4ff">→ 新建 Ticket</text>
+          <text x="196" y="228" class="t-mono" fill="#6a7484">ignore</text>
+          <text x="196" y="244" class="t-mono" fill="#6a7484">→ 到此为止</text>
+
+          <!-- 下方：两个真实分叉 -->
+          <rect x="34" y="300" width="1070" height="262" rx="10" fill="rgba(255,255,255,.014)" stroke="rgba(140,170,255,.10)"/>
+          <text x="50" y="322" class="t-title">THE TWO REAL FORKS · 这条管线里真正会分叉的地方</text>
+
+          <!-- 分叉一 -->
+          <rect x="52" y="408" width="150" height="36" rx="6" fill="rgba(167,139,250,.10)" stroke="rgba(167,139,250,.4)"/>
+          <text x="64" y="431" class="t-lbl" fill="#c4b5fd">github:128</text>
+          <path d="M202 418 Q232 418 232 396 V372 Q232 356 254 356 H286" fill="none" stroke="rgba(255,179,64,.55)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#ay)"/>
+          <path d="M202 434 Q232 434 232 456 V474 Q232 490 254 490 H286" fill="none" stroke="rgba(91,157,255,.55)" stroke-width="1.4" marker-end="url(#ar)"/>
+          <rect x="286" y="340" width="176" height="32" rx="6" fill="rgba(255,179,64,.10)" stroke="rgba(255,179,64,.42)"/>
+          <text x="298" y="361" class="t-lbl" fill="#ffd8a0">Ticket A · 已结束</text>
+          <rect x="286" y="474" width="176" height="32" rx="6" fill="rgba(91,157,255,.10)" stroke="rgba(91,157,255,.42)"/>
+          <text x="298" y="495" class="t-lbl" fill="#cfe0ff">Ticket B · 进行中</text>
+          <text x="486" y="416" class="t-mono">同一个串订阅了两个 Ticket，</text>
+          <text x="486" y="434" class="t-mono">人发的才能唤醒已结束的 A</text>
+
+          <line x1="700" y1="340" x2="700" y2="544" stroke="rgba(140,170,255,.09)"/>
+
+          <!-- 分叉二 -->
+          <rect x="722" y="408" width="150" height="36" rx="6" fill="rgba(167,139,250,.10)" stroke="rgba(167,139,250,.4)"/>
+          <text x="734" y="431" class="t-lbl" fill="#c4b5fd">github:128</text>
+          <path d="M872 426 H910" fill="none" stroke="rgba(91,157,255,.5)" stroke-width="1.4" marker-end="url(#ar)"/>
+          <rect x="910" y="408" width="178" height="36" rx="6" fill="rgba(91,157,255,.10)" stroke="rgba(91,157,255,.42)"/>
+          <text x="922" y="431" class="t-lbl" fill="#cfe0ff">自己的串 → 归它</text>
+          <text x="722" y="476" class="t-mono">thread.context 里的串只做上下文，</text>
+          <text x="722" y="494" class="t-mono">消息到达它但不归它决定</text>
+        </svg>
+        </svg>
+      </div>
+
+    </div>
+  </div>
+  <p class="small muted" style="margin-top:12px">绿色是「消息到了某个 Ticket」，蓝色是「还在流转」，灰色是「到此为止」。三条结果互斥：一条消息只会落进其中一处。</p>
+</section>
+
+<!-- ══ 2 · WHERE IT LIVES IN CODE ══════════════════════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">02</span><h3>四道岔各自读什么</h3></div>
+  <p class="sec-lede lede">这些判断全部已经在 `intake.ts` 与 `model.ts` 里执行了。面板要做的只是把它们的过程画出来，不新增任何判定。</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>1 · 范围筛选</h4>
+      <p class="small" style="color:var(--ink-2);line-height:1.85">
+        <span class="mono" style="color:#8fb4ff">scope.scope(trigger)</span> 决定来源要不要这条消息。不要就记成 <span class="mono">filtered</span>，后面所有步骤都不发生。<br>
+        <span class="muted">面板上：显示成一条终止在「丢弃」的线，原因是来源自己的原话。</span>
+      </p>
+    </div>
+    <div class="card">
+      <h4>2 · 人还是机器</h4>
+      <p class="small" style="color:var(--ink-2);line-height:1.85">
+        <span class="mono" style="color:#8fb4ff">trigger.human</span> 决定这条消息能不能唤醒已结束的 Ticket、能不能算作人的追问。机器人的消息永远不行。<br>
+        <span class="muted">面板上：在节点上标一个人/机器人的图标，影响的是下一步的条件。</span>
+      </p>
+    </div>
+    <div class="card">
+      <h4>3 · 落在哪些串上</h4>
+      <p class="small" style="color:var(--ink-2);line-height:1.85">
+        一条消息可能同时属于多个讨论串（GitHub 评论、对应的 PR、关联 Issue）。每个串有自己的订阅者列表，逐个取并集。<br>
+        <span class="muted">面板上：这里才是「分支」真正发生的地方——一个串分出多个 Ticket。</span>
+      </p>
+    </div>
+    <div class="card">
+      <h4>4 · 有没有人认领</h4>
+      <p class="small" style="color:var(--ink-2);line-height:1.85">
+        <span class="mono" style="color:#ffb340">followupOwners</span> 排除三类：认领它的 Ticket 把它退回、串里的 Ticket 只做上下文跟随、串正在评估。<br>
+        剩下来的 Ticket 才算认领。一个都没有，才走 Eval。<br>
+        <span class="muted">面板上：这是最深的一层判断，也是最容易看错的——所以要能展开看清每一步排除。</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 3 · WHAT THIS MEANS FOR THE PANEL ══════════════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">03</span><h3>面板上做成一条可折叠的路由轨迹</h3></div>
+  <p class="sec-lede lede">不是把所有消息都画成图——那样很快就糊了。而是在展开某一条消息时，显示它自己走过的这条路线，每一步都能点开看细节。</p>
+
+  <div class="console">
+    <div class="cbar"><span class="lamp"></span><span class="path"><b>superagent</b> / trigger / om_x100b615d7c…</span><span class="right">3 forks</span></div>
+    <div class="cbody">
+
+      <div class="graph">
+        <svg viewBox="0 0 1080 300" role="img" aria-label="单条消息的路由轨迹">
+          <defs>
+            <marker id="br" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#5b9dff"/></marker>
+            <marker id="bg" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#35d58c"/></marker>
+            <marker id="bw" viewBox="0 0 8 8" refX="7.5" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0 L8 4 L0 8z" fill="#ffb340"/></marker>
+          </defs>
+
+          <!-- 渐变横向时间轴 -->
+          <line x1="40" y1="40" x2="1040" y2="40" stroke="rgba(140,170,255,.14)"/>
+          <circle cx="40" cy="40" r="4" fill="#5b9dff"/><text x="40" y="26" text-anchor="middle" class="t-mono">T0</text>
+          <circle cx="300" cy="40" r="4" fill="#5b9dff"/><text x="300" y="26" text-anchor="middle" class="t-mono">T1</text>
+          <circle cx="560" cy="40" r="4" fill="#35d58c"/><text x="560" y="26" text-anchor="middle" class="t-mono">T2</text>
+          <circle cx="820" cy="40" r="4" fill="#ffb340"/><text x="820" y="26" text-anchor="middle" class="t-mono">T3</text>
+
+          <!-- T0 收到 -->
+          <rect x="52" y="64" width="216" height="76" rx="8" fill="rgba(255,255,255,.03)" stroke="rgba(140,170,255,.2)"/>
+          <text x="66" y="84" class="t-mono" style="fill:#8fb4ff">收到</text>
+          <text x="66" y="104" class="t-node">GitHub 评论 #128</text>
+          <text x="66" y="122" class="t-dim">dana · 人 · 属于 2 个串</text>
+
+          <!-- T1 筛选通过 -->
+          <path d="M268 102 H332" stroke="rgba(91,157,255,.55)" stroke-width="1.5" marker-end="url(#br)"/>
+          <rect x="332" y="64" width="216" height="76" rx="8" fill="rgba(255,255,255,.03)" stroke="rgba(140,170,255,.2)"/>
+          <text x="346" y="84" class="t-mono" style="fill:#8fb4ff">通过筛选</text>
+          <text x="346" y="104" class="t-node">在监听范围内</text>
+          <text x="346" y="122" class="t-dim">规则：github · 本仓库 · issue 与 PR</text>
+
+          <!-- T2 投递给两个 ticket -->
+          <path d="M548 102 H612" stroke="rgba(53,213,140,.55)" stroke-width="1.5" marker-end="url(#bg)"/>
+          <rect x="612" y="48" width="196" height="34" rx="7" fill="rgba(53,213,140,.11)" stroke="rgba(53,213,140,.45)"/>
+          <text x="624" y="69" class="t-lbl" style="fill:#a8f0c8">Ticket A · 投递成功</text>
+          <rect x="612" y="88" width="196" height="34" rx="7" fill="rgba(255,179,64,.11)" stroke="rgba(255,179,64,.45)"/>
+          <text x="624" y="109" class="t-lbl" style="fill:#ffd8a0">Ticket B · 未投递</text>
+          <text x="612" y="140" class="t-mono">两个 Ticket 都订阅了这个串</text>
+
+          <!-- T3 后续 -->
+          <path d="M808 65 H872" stroke="rgba(91,157,255,.5)" stroke-width="1.4" marker-end="url(#br)"/>
+          <path d="M808 105 H872" stroke="rgba(255,179,64,.5)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#bw)"/>
+          <rect x="872" y="48" width="180" height="34" rx="7" fill="rgba(53,213,140,.08)" stroke="rgba(53,213,140,.32)"/>
+          <text x="884" y="69" class="t-lbl" style="fill:#a8f0c8">A 已确认收到</text>
+          <rect x="872" y="88" width="180" height="34" rx="7" fill="rgba(255,179,64,.08)" stroke="rgba(255,179,64,.32)"/>
+          <text x="884" y="109" class="t-lbl" style="fill:#ffd8a0">B 排队等 Worker</text>
+
+          <!-- 底部说明 -->
+          <rect x="52" y="170" width="1000" height="100" rx="9" fill="rgba(255,255,255,.014)" stroke="rgba(140,170,255,.10)"/>
+          <text x="68" y="192" class="t-title">为什么这条消息同时进了 A 和 B</text>
+          <text x="68" y="216" class="t-dim">它发在 github:128 上，A 和 B 都订阅了这个串，而且都是活的。</text>
+          <text x="68" y="236" class="t-dim">这不是重复投递——两个 Ticket 都会各自读到它，各自决定怎么处理。</text>
+          <text x="68" y="256" class="t-mono" style="fill:#8fb4ff">disposition.fanout = [ticket_a, ticket_b]</text>
+        </svg>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══ 4 · COLOR ═══════════════════════════════════════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">04</span><h3>颜色只表示路由后果</h3></div>
+  <p class="sec-lede lede">路由图里不出现「完成度」这类无关信息，每种颜色都对应一个具体后果。</p>
+  <div class="grid3">
+    <div class="card">
+      <div class="sw">
+        <div class="swc"><div class="blk" style="background:#35d58c"></div><div class="mt"><div class="nm">投递成立</div><div class="hx">#35d58c</div></div></div>
+        <div class="swc"><div class="blk" style="background:#5b9dff"></div><div class="mt"><div class="nm">仍在流转</div><div class="hx">#5b9dff</div></div></div>
+        <div class="swc"><div class="blk" style="background:#ffb340"></div><div class="mt"><div class="nm">认领但未完成</div><div class="hx">#ffb340</div></div></div>
+        <div class="swc"><div class="blk" style="background:#6a7484"></div><div class="mt"><div class="nm">终止 / 丢弃</div><div class="hx">#6a7484</div></div></div>
+        <div class="swc"><div class="blk" style="background:#a78bfa"></div><div class="mt"><div class="nm">讨论串</div><div class="hx">#a78bfa</div></div></div>
+        <div class="swc"><div class="blk" style="background:#ff5b52"></div><div class="mt"><div class="nm">路由出错</div><div class="hx">#ff5b52</div></div></div>
+      </div>
+    </div>
+    <div class="card" style="grid-column: span 2">
+      <h4>三条硬约束</h4>
+      <dl class="kv">
+        <dt>互斥</dt><dd>一条消息的最终结果只有一种：投递到 Ticket、交给评估、被丢弃、被忽略。图上不会同时出现两条终点。</dd>
+        <dt>可下钻</dt><dd>每个节点点开都落到现有页面：Tick﻿e﻿t 节点 → <span class="mono">execution/:id</span>，串节点 → <span class="mono">trigger/:key</span>，没有新路由。</dd>
+        <dt>不重算</dt><dd>图只读 <span class="mono">disposition</span> 里已经落盘的结论，不在前端重新推导一次路由。</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 5 · LANDING ═════════════════════════════════════════ -->
+<section class="sec">
+  <div class="sec-head"><span class="sec-no">05</span><h3>落地顺序</h3></div>
+  <div class="card">
+    <ol class="moves">
+      <li><div><b>先做单条消息的路由轨迹</b><br><span class="small muted">展开某条 Trigger 时显示它走过的四步。数据全在 <span class="mono">disposition</span> 里，不改后端。</span></div></li>
+      <li><div><b>再做终点状态</b><br><span class="small muted">接上 Ticket 当前的 stage，让终点节点显示它现在在哪一段、卡在哪里。</span></div></li>
+      <li><div><b>最后做全局管线</b><br><span class="small muted">第 1 节那种总览图，用 24 小时的真实计数标注每一道岔的通过量。</span></div></li>
+    </ol>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
