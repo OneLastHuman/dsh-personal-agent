@@ -240,6 +240,22 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
   expect(await route({ kind: 'accept', trigger_id: trigger.id, title: 'again', worktree_name: worktreeName, acknowledgement: 'x' })).toMatchObject({ ticket: { ticket_id: ticket.id } })
 })
 
+it('offers the reply that answered a person one more sentence once its accept starts work, and withdraws it for any other answer', async () => {
+  // A candidate alone offers nothing: only the accept its turn makes starts work the person may be told about.
+  const offers = () => runtime.store.db.prepare("SELECT key FROM effect WHERE kind = 'promise'").all().length
+  const first = feishu('7', '@bot 修一下回归')
+  await receive(first)
+  expect(offers()).toBe(0)
+  await route({ kind: 'accept', trigger_id: first.id, title: '修复回归', worktree_name: worktreeName, acknowledgement: '收到，修复回归。' })
+  // The offer is the turn's notice: once the pass reads it, the main Session may still say the work has started.
+  await runtime.idle()
+  expect(offers()).toBe(0)
+  const notice = agents.get(runtime.masterId)!.inject.mock.calls
+    .map(([message]) => JSON.parse(message.content.map((block: { type: string; text?: string }) => block.type === 'text' ? block.text : '').join('')) as Record<string, unknown>)
+    .find(item => 'promise' in item)
+  expect(notice).toMatchObject({ promise: expect.any(String), ticket_id: expect.any(String) })
+})
+
 it('fans a person\'s later thread message out to the live worker as context and tells the orchestrator, without an Eval', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   deliveries.mockClear()
@@ -322,6 +338,12 @@ it('records worker reports, binds the task PR, ends the ticket on ready without 
   deliveries.mockClear()
   expect(await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'started' })).toMatchObject({ notification: 'internal_only' })
   expect(relays(runtime.masterId)).toEqual([])
+  // Progress with evidence reaches the main Session as one sentence for the person; the rest stays internal.
+  expect(await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'repository read', evidence: 'src/app/runtime.ts:120' }))
+    .toMatchObject({ notification: 'orchestrator' })
+  expect(relays(runtime.masterId).at(-1)).toMatchObject({ kind: 'worker_progress', ticket: { ticket_id: ticket.id }, summary: 'repository read',
+    evidence: 'src/app/runtime.ts:120' })
+  await expect(runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'done', evidence: 'x' })).rejects.toThrow('Only a progress report carries evidence')
   await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'need a decision', human_action: 'Desktop too?' })
   expect(runtime.store.tickets.get(ticket.id)!.attention).toMatchObject({ question: 'Desktop too?' })
   expect(relays(runtime.masterId).at(-1)).toMatchObject({ kind: 'worker_attention', ticket: { ticket_id: ticket.id, attention: { question: 'Desktop too?' } } })

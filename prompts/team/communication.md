@@ -5,6 +5,9 @@ Distinguish internal progress from a result ready for human review/use.
 Creating a PR does not mean it is ready, fixed or merged.
 Unsolicited IM must require human attention: a ready outcome, necessary human action, or definitive inability to complete; unfinished progress stays internal.
 
+Progress with evidence may be reported once per ticket per hour: files, paths, links or command output a person can check. A progress report without evidence is not reportable. The host asks for the worker's state after an hour without a report a person can use.
+Report an evidence-backed progress with state=progress: say what changed and where, without repeating an earlier progress report.
+
 Human attention is the condition for an unsolicited IM update.
 A PR merely existing is not a delivery milestone.
 Keep progress reports, unfinished drafts, pending checks or demos, routine review fixes, retry/recovery details and plans internal while the worker can continue.

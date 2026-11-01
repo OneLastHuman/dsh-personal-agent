@@ -114,16 +114,54 @@ export function resultRelay(ticket: Ticket, state: string, text: string, replyTo
 }
 /**
  * Converts a worker report recorded on `ticket` into a main-Session relay: a question for a person produces a
- * `worker_attention` relay, and a result, blocker, end, or answer to a question produces a `worker_report` relay, while
- * routine `progress` reports without `answers` stay internal.
+ * `worker_attention` relay; a result, blocker, end, or answer to a question produces a `worker_report` relay; and a `progress`
+ * report produces a `worker_progress` relay only when it carries `evidence`, so a routine progress that proves nothing stays internal.
+ * @param report the recorded report, or a progress report as the Executor reports it, before the report is stored.
  * @returns The steering `Relay`, or `undefined` when the report is not relayed to the main Session.
  */
-export function reportRelay(ticket: Ticket, report: Pick<WorkerReport, 'state' | 'summary' | 'question' | 'answers'>): Relay | undefined {
+export function reportRelay(ticket: Ticket,
+  report: Pick<WorkerReport, 'state' | 'summary' | 'question' | 'answers' | 'evidence'> & { at?: string }): Relay | undefined {
   const asked = report.question ? ticket.attention : undefined
   if (asked) {
     return { id: `attention:${ticket.id}:${asked.id}`,
       text: JSON.stringify({ kind: 'worker_attention', ticket: brief(ticket), state: report.state, read: `ticket/${ticket.id}/result` }) }
   }
-  if (report.state === 'progress' && !report.answers) return undefined
+  if (report.state === 'progress' && !report.answers) {
+    if (!report.evidence) return undefined
+    const at = report.at ?? new Date().toISOString()
+    return { id: `progress:${ticket.id}:${at}`,
+      text: JSON.stringify({ kind: 'worker_progress', at, ticket: brief(ticket), trigger_id: ticket.origin.triggerId, summary: report.summary,
+        evidence: report.evidence, read: `ticket/${ticket.id}/result` }) }
+  }
   return resultRelay(ticket, report.state, report.summary, report.answers)
+}
+/** How long a worker may report progress without carrying evidence before the main Session asks it for its state. */
+export const PROGRESS_QUIET_MS = 60 * 60_000
+/** How long after a candidate reaches the main Session its accept may still promise its person an answer. */
+export const PROMISE_MS = 3 * 60_000
+/**
+ * The notice that lets the main Session keep a promise the communication contract otherwise forbids: it answered a person and
+ * started work for them without saying when the outcome comes. It may send one sentence saying so, or take other work; either
+ * withdraws the notice. A ticket a person stopped gets none.
+ * @param ticket the open ticket the person's message started; absent for a message that started none.
+ * @returns The notice's name and body, `undefined` without a ticket that is still live.
+ */
+export function promiseNotice(ticket: Ticket | undefined, at: string): [name: string, value: Record<string, unknown>, summary: string] | undefined {
+  if (!ticket || !liveTicket(ticket)) return undefined
+  return [`promise:${randomUUID()}`, { ...brief(ticket), promise: at,
+    may: 'You answered this person and they wait for the outcome. If you have not told them when it comes, say so in one short sentence; once you do, ignore this notice.' },
+  `Ticket ${ticket.id} may still tell its person that the work has started`]
+}
+/**
+ * The relay that asks a worker for its state when `at` is an hour past the ticket's last change, and `since` is still the
+ * record of the turn that change started: a later turn, report or end replaces that record, so each turn is asked at most once.
+ * The main Session then asks the worker for its status and tells the person where the work stands.
+ * @returns The steering `Relay`, or `undefined` while the worker may still report progress on its own.
+ */
+export function quietProgressRelay(ticket: Ticket, since: string | undefined, at: string): Relay | undefined {
+  // A turn holds the session's per-ticket record while it may still report progress on its own.
+  if (!since || Date.parse(at) - Date.parse(ticket.updatedAt) < PROGRESS_QUIET_MS) return undefined
+  return { id: `progress-check:${ticket.id}:${ticket.updatedAt}`,
+    text: JSON.stringify({ kind: 'progress_check', ticket: brief(ticket), since,
+      ask: 'Ask its worker for its status with orchestrator_ticket_request_status, then tell its person where the work stands in one sentence.' }) }
 }

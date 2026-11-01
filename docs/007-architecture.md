@@ -588,6 +588,9 @@ These messages are steered into the main Session's turn:
 | `follow_up` | One message as its Executor sees it, `replies_to`, receiving Tickets, and the reminder that Executors decide it while the main Session may only stop work |
 | `worker_report` | Ticket card, originating Trigger, state and summary up to 600 characters; `chars` and a read pointer when truncated |
 | `worker_attention` | Ticket card carrying the question |
+| `worker_progress` | A worker's progress that carries `evidence`: ticket card, originating Trigger, time, summary and evidence; progress without evidence is not relayed |
+| `progress_check` | A worker turn an hour past its last change without a report a person can use: ticket card and the instruction to ask its worker for its status |
+| `promise` | A turn that answered a person and started a Ticket: the ticket card and the one sentence it may still send saying the work has started; a later candidate, reply or turn withdraws it |
 
 Other notices are injected without waking the main Session: `ticket_ended`, `settings_saved`, prompt saves, Trigger requeues, dropped Subscriptions and context follows. A settings notice names the block, changed paths and `read: settings/<block>`. The main Session receives no redundant notice for a save, requeue, unsubscribe or attach it performed itself.
 
