@@ -17,7 +17,7 @@ import { RetryHealth } from './retry-health.ts'
 import { initializeRoleModel } from './role-models.ts'
 import { bundledSkills } from './skill-files.ts'
 import { KV } from '../kv.ts'
-import { PROMISE_MS, promiseNotice, quietProgressRelay } from './notices.ts'
+import { owed, PROMISE_MS, progressCheckNotice, promiseNotice, quietProgressRelay } from './notices.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
@@ -372,6 +372,20 @@ export class Sessions {
     this.host.store.delete(KV.progress.quiet(ticketId))
     this.disarmProgressCheck(ticketId)
   }
+  /**
+   * Makes sure the person whose message on `ticket` no report took up hears one sentence about the work once the turn ends: a
+   * waiting notice keeps its place, so one turn wakes the main Session once, and the notice names the message it answers.
+   */
+  turnReported(ticketId: string): void {
+    const ticket = this.host.store.tickets.get(ticketId)
+    const input = ticket && liveTicket(ticket) && !this.host.closing() ? owed(ticket) : undefined
+    if (!ticket || !input) return
+    const name = `progress-check:${input.id}`
+    if (this.host.effects.pending('promise', name)) return
+    const [key, value, summary] = progressCheckNotice(ticket, input)
+    this.host.effects.enqueue('promise', key, { value, summary })
+    this.host.requestPass()
+  }
   /** Schedules the check for `ticketId`'s turn at the hour, replacing an earlier schedule; a check that finds the record replaced does nothing. */
   private armProgressCheck(ticketId: string): void {
     this.disarmProgressCheck(ticketId)
@@ -382,7 +396,9 @@ export class Sessions {
       const ticket = this.host.store.tickets.get(ticketId)
       if (!ticket || this.host.closing()) return
       const relay = quietProgressRelay(ticket, `${ticketId}:${ticket.updatedAt}`, new Date().toISOString())
-      if (relay) this.relay(relay.id, relay.text)
+      if (relay) { this.relay(relay.id, relay.text); return }
+      // A turn that read a person's message without taking it up leaves the host to answer that person.
+      this.turnReported(ticketId)
     }, Math.max(0, Date.parse(since.at) + 60 * 60_000 - Date.now()))
     timer.unref?.()
     this.progressChecks.set(ticketId, timer)

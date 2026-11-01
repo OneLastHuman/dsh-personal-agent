@@ -65,6 +65,18 @@ export class Assignments extends EnginePart {
     for (const input of ticket.inputs) if (input.kind === 'trigger' && inputIds.includes(input.id)) input.readAt ||= this.now()
     this.repo.tickets.save(ticket)
   }
+  /**
+   * Records when the worker of an open ticket read the person's messages among `triggerIds` without taking them up, so the host
+   * can answer their authors; a message recorded already keeps the time it was first met.
+   */
+  met(ticketId: string, triggerIds: string[]): void {
+    const ticket = this.require(ticketId)
+    if (!liveTicket(ticket)) return
+    const at = this.now()
+    const waiting = ticket.inputs.filter(input => input.kind === 'trigger' && !!input.human && !input.metAt && triggerIds.includes(input.triggerId))
+    for (const input of waiting) if (input.kind === 'trigger') input.metAt = at
+    if (waiting.length) this.repo.tickets.save(ticket)
+  }
   turnEnded(ticketId: string, assignmentId: string): void {
     const ticket = this.running(ticketId, assignmentId)
     if (!ticket) return
