@@ -108,8 +108,8 @@ flowchart LR
 ### M2：Progress + 讨论回灌（架构中改动）
 
 - `ReportState` 增加 `discuss`：Worker 在「方向分叉、需人拍板」时发出，主 Session 读到后主动开聊，并把结论以 `text` Input 回放给 Worker。
-- `progress` 从「内部」升级为「主 Session 收到后一句话转述」：把 `src/app/notices.ts` 中 `reportRelay` 对 `progress` 的丢弃改成「进入主 Session 的 inbox，由主 Session 决定是否发声」。
-- `progress` 的 payload 增加 `next` 与 `cascade`（受影响文件范围），供主 Session 决定是否开新 Ticket。
+- `progress` 从「内部」升级为「主 Session 收到后一句话转述」：`reportRelay` 仍不把普通 `progress` 当结果转发，而是在 M0 的通告契约里要求 Worker 的进展自带 `evidence`，带 `evidence` 的 `progress` 才进入主 Session 的 inbox，由主 Session 按三问决定是否发声；没有证据的 `progress` 继续只留在 Ticket 记录里。这样噪音上限由「有没有证据」决定，而不是由模型心情决定。
+- `progress` 的 payload 增加 `evidence`、`next` 与 `cascade`（证据、建议的下一步、受影响文件范围），供主 Session 决定是否上报、是否开新 Ticket。
 - 验收指标：
   - 一个 Ticket 从 accept 到 ready 期间，人至少收到一次带证据的进展（或明确说明「预计 X 时间」）。
   - 讨论结论 100% 回到 Ticket 或新 Ticket，不丢结论。
